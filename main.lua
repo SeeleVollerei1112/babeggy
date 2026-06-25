@@ -1,5 +1,9 @@
-local BabyMvp = require("BabyMvp")
+local GameApp = require("App.GameApp")
 
 LuaAPI.global_register_trigger_event({ EVENT.GAME_INIT }, function()
-    BabyMvp.start()
+    GameApp.init()
+end)
+
+LuaAPI.global_register_trigger_event({ EVENT.GAME_END }, function()
+    GameApp.destroy()
 end)

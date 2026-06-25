@@ -2,7 +2,9 @@ local TaskEvents = {}
 
 TaskEvents.EVENTS = {
     LIFT_BABY = "TASK_LIFT_BABY",
+    NEED_MATCHED = "TASK_BABY_NEED_MATCHED",
     BABY_PICK_ITEM = "TASK_BABY_PICK_ITEM",
+    BABY_SATISFIED = "TASK_BABY_SATISFIED",
     WRONG_ITEM = "TASK_BABY_WRONG_ITEM", -- 不是宝宝想要的：放下宝宝时附近只有不对的物品
 }
 
@@ -52,8 +54,9 @@ function TaskEvents.emit(role, event_name, extra)
 end
 
 function TaskEvents.emit_all(event_name, extra)
-    local roles = GameAPI.get_all_valid_roles()
-    for _, role in ipairs(roles) do
+    local roles = GameAPI.get_all_valid_roles() or {}
+    for index = 1, #roles do
+        local role = roles[index]
         TaskEvents.emit(role, event_name, extra)
     end
 end
