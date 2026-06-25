@@ -1,0 +1,34 @@
+---
+description: EUI图片预设 - 未分类图片资源。
+alwaysApply: false
+---
+
+# EUI 图片预设 - Class 7: 未知分类7
+
+用于 `create_eui_image()` 和 `create_eui_clipping_node()` 的 `_preset_id` 参数。
+
+## 分类信息
+- **Class ID**: 7
+- **分类名称**: 未知分类7
+- **资源数量**: 1
+
+## 完整ID列表
+
+| ID | 名称 | 尺寸 (WxH) |
+|----|------|------------|
+| 20000 | 空 | 100x100 |
+
+## 使用示例
+
+```lua
+local tf = math.tofixed
+
+-- 创建图片
+local img = EggyAPI.create_eui_image(
+    parent,
+    tf(0), tf(0),           -- x, y
+    tf(100), tf(100),       -- width, height
+    20000,                   -- 替换为上表中的ID
+    "img_name"
+)
+```
