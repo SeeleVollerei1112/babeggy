@@ -13,7 +13,8 @@ local PICKUP_TIMEOUT = 5.0
 local PICKUP_MOVE_SPEED_RATIO = 2.0
 local SCORE_REWARD = 10
 local SATISFIED_REACT_TIME = 3.0
-local DEPRESSED_REACT_TIME = 1.0
+local GROUND_RAY_UP = 50.0
+local GROUND_RAY_DOWN = 100.0
 
 local ITEMS = {
     { key = 1073774699, text = "喝奶昔", name = "草莓奶昔" },
@@ -125,6 +126,25 @@ local function distance_sq(a, b)
     local dy = a.y - b.y
     local dz = a.z - b.z
     return dx * dx + dy * dy + dz * dz
+end
+
+-- 区域随机点的 Y 可能在触发体的高度上，直接生成物品会飘在半空。
+-- 从随机点上方向下打射线，取命中的最高地表，把物品落到地板上。
+local function ground_point(point)
+    local start_pos = math.Vector3(point.x, point.y + GROUND_RAY_UP, point.z)
+    local end_pos = math.Vector3(point.x, point.y - GROUND_RAY_DOWN, point.z)
+    local best_y = nil
+
+    GameAPI.raycast_unit(start_pos, end_pos, { Enums.UnitType.OBSTACLE }, function(unit, hit_pos, normal)
+        if hit_pos and (not best_y or hit_pos.y > best_y) then
+            best_y = hit_pos.y
+        end
+    end)
+
+    if best_y then
+        return math.Vector3(point.x, best_y, point.z)
+    end
+    return point
 end
 
 local function set_all_role_scene_label(layer, text)
@@ -337,48 +357,25 @@ local function finish_satisfied(baby, item)
     })
     if baby.last_role and baby.last_role.add_score then
         baby.last_role.add_score(SCORE_REWARD)
-        baby.last_role.show_tips("宝宝需求满足 +" .. tostring(SCORE_REWARD), 2.0)
+        baby.last_role.show_tips("宝宝满足 +" .. tostring(SCORE_REWARD), 2.0)
     else
-        GlobalAPI.show_tips("宝宝需求满足 +" .. tostring(SCORE_REWARD), 2.0)
+        GlobalAPI.show_tips("宝宝满足 +" .. tostring(SCORE_REWARD), 2.0)
     end
 end
 
-local function finish_depressed(baby, item)
-    set_baby_status(baby, "不开心")
-    emit_for_baby(baby, TaskEvents.EVENTS.BABY_DEPRESSED, {
-        baby = baby.unit,
-        item_id = item.def.key,
-        need = baby.need.text,
-        amount = 1,
-    })
-    if baby.last_role and baby.last_role.show_tips then
-        baby.last_role.show_tips("需求不对", 2.0)
-    else
-        GlobalAPI.show_tips("需求不对", 2.0)
-    end
-end
-
-local function finish_interaction(baby, item, correct)
+-- 宝宝只会拾取与需求一致的物品（见 on_baby_lifted_end），所以拾取成功必然是满足。
+local function finish_interaction(baby, item)
     baby.busy = true
     set_baby_lift_enabled(baby, false)
     baby.unit.stop_ai()
     baby.unit.ai_command_stop_move(0.1)
     select_baby_equipped_slot(baby)
 
-    if correct then
-        set_baby_status(baby, item.def.text)
-        LuaAPI.call_delay_time(SATISFIED_REACT_TIME, function()
-            finish_satisfied(baby, item)
-            cleanup_item_and_continue(baby, item)
-        end)
-    else
-        finish_depressed(baby, item)
-        -- 不能在 stop_ai/stop_move 的同一帧恢复巡逻，否则移动指令会被 stop 抵消，
-        -- 宝宝会卡到下一个巡逻点才动。延迟一个短暂的反应时间让 stop 结算完。
-        LuaAPI.call_delay_time(DEPRESSED_REACT_TIME, function()
-            cleanup_item_and_continue(baby, item)
-        end)
-    end
+    set_baby_status(baby, item.def.text)
+    LuaAPI.call_delay_time(SATISFIED_REACT_TIME, function()
+        finish_satisfied(baby, item)
+        cleanup_item_and_continue(baby, item)
+    end)
 end
 
 local function complete_item_obtained(baby, item, count)
@@ -399,8 +396,7 @@ local function complete_item_obtained(baby, item, count)
         amount = count or 1,
     })
 
-    local correct = baby.need and item.def.key == baby.need.key
-    finish_interaction(baby, item, correct)
+    finish_interaction(baby, item)
 end
 
 local function on_item_obtained(item, data)
@@ -457,7 +453,7 @@ local function wait_for_pickup_result(baby, item, token, elapsed)
 end
 
 spawn_item = function(item_def)
-    local equipment = GameAPI.create_equipment(item_def.key, random_point())
+    local equipment = GameAPI.create_equipment(item_def.key, ground_point(random_point()))
     set_item_text(equipment, item_def)
 
     local item = {
@@ -473,17 +469,19 @@ spawn_item = function(item_def)
     return item
 end
 
-local function nearest_item_to(pos)
+local function nearest_item_to(pos, need_key)
     local best = nil
     local best_dist = nil
 
     for _, item in ipairs(state.items) do
-        local item_pos = item.equipment.get_position and item.equipment.get_position()
-        if item_pos then
-            local dist = distance_sq(pos, item_pos)
-            if not best_dist or dist < best_dist then
-                best = item
-                best_dist = dist
+        if not need_key or item.def.key == need_key then
+            local item_pos = item.equipment.get_position and item.equipment.get_position()
+            if item_pos then
+                local dist = distance_sq(pos, item_pos)
+                if not best_dist or dist < best_dist then
+                    best = item
+                    best_dist = dist
+                end
             end
         end
     end
@@ -521,10 +519,17 @@ local function on_baby_lifted_end(baby)
     end
 
     local pos = baby.unit.get_position()
-    local item = nearest_item_to(pos)
+    local need_key = baby.need and baby.need.key
+    local item = nearest_item_to(pos, need_key)
 
     if item then
         set_baby_status(baby, "去" .. item.def.text)
+        emit_for_baby(baby, TaskEvents.EVENTS.NEED_MATCHED, {
+            baby = baby.unit,
+            item_id = item.def.key,
+            need = baby.need and baby.need.text or nil,
+            amount = 1,
+        })
         baby.unit.start_ai()
         baby.pending_item = item
         baby.pickup_token = (baby.pickup_token or 0) + 1
@@ -537,6 +542,21 @@ local function on_baby_lifted_end(baby)
             wait_for_pickup_result(baby, item, token, PICKUP_CHECK_INTERVAL)
         end)
     else
+        -- 附近没有"想要"的物品：如果旁边有别的物品，说明拿错了，给个提示但不拾取。
+        local wrong = nearest_item_to(pos)
+        if wrong then
+            emit_for_baby(baby, TaskEvents.EVENTS.WRONG_ITEM, {
+                baby = baby.unit,
+                item_id = wrong.def.key,
+                need = baby.need and baby.need.text or nil,
+                amount = 1,
+            })
+            if baby.last_role and baby.last_role.show_tips then
+                baby.last_role.show_tips("不是想要的", 1.5)
+            else
+                GlobalAPI.show_tips("不是想要的", 1.5)
+            end
+        end
         show_current_need(baby)
         start_patrol(baby)
     end
@@ -608,4 +628,3 @@ function BabyMvp.start()
 end
 
 return BabyMvp
-

@@ -3,8 +3,7 @@ local TaskEvents = {}
 TaskEvents.EVENTS = {
     LIFT_BABY = "TASK_LIFT_BABY",
     BABY_PICK_ITEM = "TASK_BABY_PICK_ITEM",
-    BABY_SATISFIED = "TASK_BABY_SATISFIED",
-    BABY_DEPRESSED = "TASK_BABY_DEPRESSED",
+    WRONG_ITEM = "TASK_BABY_WRONG_ITEM", -- 不是宝宝想要的：放下宝宝时附近只有不对的物品
 }
 
 
