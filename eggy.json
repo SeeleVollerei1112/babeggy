@@ -1,0 +1,12 @@
+{
+    "projectName": "宝宝模拟器", 
+    "projectID": "694f4e76421aa90f9a717dca", 
+    "serverPort": 58124, 
+    "syncEnabled": true, 
+    "excludePatterns": [
+        ".vscode", 
+        ".git", 
+        "EggyAPI.lua"
+    ], 
+    "version": "1.0.0"
+}
