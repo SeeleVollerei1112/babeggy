@@ -12,11 +12,13 @@ local PICKUP_CHECK_INTERVAL = 0.25
 local PICKUP_TIMEOUT = 5.0
 local PICKUP_MOVE_SPEED_RATIO = 2.0
 local SCORE_REWARD = 10
+local SATISFIED_REACT_TIME = 3.0
+local DEPRESSED_REACT_TIME = 1.0
 
 local ITEMS = {
-    { key = 6000001, text = "喝奶昔", name = "草莓奶昔" },
-    { key = 6000002, text = "吃冰淇淋", name = "冰淇淋" },
-    { key = 6000003, text = "吃蛋糕", name = "提拉米苏" },
+    { key = 1073774699, text = "喝奶昔", name = "草莓奶昔" },
+    { key = 1073786889, text = "吃冰淇淋", name = "冰淇淋" },
+    { key = 1073795131, text = "吃蛋糕", name = "提拉米苏" },
 }
 
 local state = {
@@ -272,12 +274,13 @@ local function command_next_patrol_point(baby, token)
     baby.unit.set_attr_ratio_fixed("move_speed", 0.0)
     baby.unit.start_move_to_pos_with_threshold(target, 4.0, 0.5)
     log("baby " ..
-    tostring(baby.index) ..
-    " patrol from " ..
-    tostring(current.x) ..
-    "," ..
-    tostring(current.y) ..
-    "," .. tostring(current.z) .. " to " .. tostring(target.x) .. "," .. tostring(target.y) .. "," .. tostring(target.z))
+        tostring(baby.index) ..
+        " patrol from " ..
+        tostring(current.x) ..
+        "," ..
+        tostring(current.y) ..
+        "," ..
+        tostring(current.z) .. " to " .. tostring(target.x) .. "," .. tostring(target.y) .. "," .. tostring(target.z))
 
     LuaAPI.call_delay_time(1.0, function()
         if baby.unit and not baby.busy and baby.patrol_token == token then
@@ -291,59 +294,91 @@ local function command_next_patrol_point(baby, token)
     end)
 end
 
+local function set_baby_lift_enabled(baby, enabled)
+    if baby.unit and baby.unit.set_lifted_enabled then
+        baby.unit.set_lifted_enabled(enabled)
+    end
+end
+
 local function start_patrol(baby)
     if not baby.unit then
         return
     end
 
     baby.busy = false
+    set_baby_lift_enabled(baby, true)
     baby.patrol_token = (baby.patrol_token or 0) + 1
     command_next_patrol_point(baby, baby.patrol_token)
 end
 
-local function finish_interaction(baby, item, correct)
-    baby.busy = true
-    baby.unit.stop_ai()
-    baby.unit.ai_command_stop_move(0.1)
+local function select_baby_equipped_slot(baby)
+    if baby.unit and baby.unit.set_selected_equipment_slot then
+        baby.unit.set_selected_equipment_slot(Enums.EquipmentSlotType.EQUIPPED, 1)
+    end
+end
 
-    if correct then
-        set_baby_status(baby, "满足了")
-        emit_for_baby(baby, TaskEvents.EVENTS.BABY_SATISFIED, {
-            baby = baby.unit,
-            item_id = item.def.key,
-            need = baby.need.text,
-            amount = 1,
-        })
-        if baby.last_role and baby.last_role.add_score then
-            baby.last_role.add_score(SCORE_REWARD)
-            baby.last_role.show_tips("宝宝需求满足 +" .. tostring(SCORE_REWARD), 2.0)
-        else
-            GlobalAPI.show_tips("宝宝需求满足 +" .. tostring(SCORE_REWARD), 2.0)
-        end
-    else
-        set_baby_status(baby, "不开心")
-        emit_for_baby(baby, TaskEvents.EVENTS.BABY_DEPRESSED, {
-            baby = baby.unit,
-            item_id = item.def.key,
-            need = baby.need.text,
-            amount = 1,
-        })
-        if baby.last_role and baby.last_role.show_tips then
-            baby.last_role.show_tips("需求不对", 2.0)
-        else
-            GlobalAPI.show_tips("需求不对", 2.0)
-        end
+local function cleanup_item_and_continue(baby, item)
+    if item.equipment and item.equipment.destroy_equipment then
+        item.equipment.destroy_equipment()
     end
 
-    LuaAPI.call_delay_time(3.0, function()
-        if item.equipment and item.equipment.destroy_equipment then
-            item.equipment.destroy_equipment()
-        end
+    spawn_item(item.def)
+    choose_need(baby)
+    start_patrol(baby)
+end
 
-        spawn_item(item.def)
-        choose_need(baby)
-        start_patrol(baby)
-    end)
+local function finish_satisfied(baby, item)
+    set_baby_status(baby, "满足了")
+    emit_for_baby(baby, TaskEvents.EVENTS.BABY_SATISFIED, {
+        baby = baby.unit,
+        item_id = item.def.key,
+        need = baby.need.text,
+        amount = 1,
+    })
+    if baby.last_role and baby.last_role.add_score then
+        baby.last_role.add_score(SCORE_REWARD)
+        baby.last_role.show_tips("宝宝需求满足 +" .. tostring(SCORE_REWARD), 2.0)
+    else
+        GlobalAPI.show_tips("宝宝需求满足 +" .. tostring(SCORE_REWARD), 2.0)
+    end
+end
+
+local function finish_depressed(baby, item)
+    set_baby_status(baby, "不开心")
+    emit_for_baby(baby, TaskEvents.EVENTS.BABY_DEPRESSED, {
+        baby = baby.unit,
+        item_id = item.def.key,
+        need = baby.need.text,
+        amount = 1,
+    })
+    if baby.last_role and baby.last_role.show_tips then
+        baby.last_role.show_tips("需求不对", 2.0)
+    else
+        GlobalAPI.show_tips("需求不对", 2.0)
+    end
+end
+
+local function finish_interaction(baby, item, correct)
+    baby.busy = true
+    set_baby_lift_enabled(baby, false)
+    baby.unit.stop_ai()
+    baby.unit.ai_command_stop_move(0.1)
+    select_baby_equipped_slot(baby)
+
+    if correct then
+        set_baby_status(baby, item.def.text)
+        LuaAPI.call_delay_time(SATISFIED_REACT_TIME, function()
+            finish_satisfied(baby, item)
+            cleanup_item_and_continue(baby, item)
+        end)
+    else
+        finish_depressed(baby, item)
+        -- 不能在 stop_ai/stop_move 的同一帧恢复巡逻，否则移动指令会被 stop 抵消，
+        -- 宝宝会卡到下一个巡逻点才动。延迟一个短暂的反应时间让 stop 结算完。
+        LuaAPI.call_delay_time(DEPRESSED_REACT_TIME, function()
+            cleanup_item_and_continue(baby, item)
+        end)
+    end
 end
 
 local function complete_item_obtained(baby, item, count)
@@ -354,6 +389,7 @@ local function complete_item_obtained(baby, item, count)
     item.done = true
     baby.pending_item = nil
     log("item obtained " .. tostring(item.def.key))
+    select_baby_equipped_slot(baby)
     remove_item_record(item.equipment)
 
     emit_for_baby(baby, TaskEvents.EVENTS.BABY_PICK_ITEM, {
@@ -382,6 +418,7 @@ local function force_pickup_item(baby, item)
     end
 
     baby.unit.swap_equipment_slot(item.equipment, Enums.EquipmentSlotType.EQUIPPED, 1)
+    select_baby_equipped_slot(baby)
     log("pickup force slot " .. tostring(item.def.key))
     return true
 end
@@ -458,6 +495,10 @@ local function nearest_item_to(pos)
 end
 
 local function on_baby_lifted_begin(baby, data)
+    if baby.busy then
+        return
+    end
+
     baby.patrol_token = (baby.patrol_token or 0) + 1
     baby.last_lift_unit = data.lift_unit
     baby.last_role = get_role_by_unit(data.lift_unit)
@@ -475,6 +516,10 @@ local function on_baby_lifted_begin(baby, data)
 end
 
 local function on_baby_lifted_end(baby)
+    if baby.busy and not baby.last_lift_unit then
+        return
+    end
+
     local pos = baby.unit.get_position()
     local item = nearest_item_to(pos)
 
@@ -563,7 +608,4 @@ function BabyMvp.start()
 end
 
 return BabyMvp
-
-
-
 
