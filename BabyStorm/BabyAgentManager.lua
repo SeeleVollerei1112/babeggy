@@ -90,6 +90,8 @@ function BabyAgentManager:start()
     local round = RoundService.New(self.config, self.triggers, sessions, game_view_model)
     local view = BabySceneView.New(self.config)
 
+    self.driving_riders = {}
+
     self.services = {
         arena = arena,
         resolver = resolver,
@@ -103,6 +105,9 @@ function BabyAgentManager:start()
         view = view,
         triggers = self.triggers,
         game_view_model = game_view_model,
+        is_unit_driving = function(unit)
+            return self:_is_unit_driving(unit)
+        end,
     }
 
     item:on_obtained(function(item_record, data)
@@ -110,6 +115,14 @@ function BabyAgentManager:start()
     end)
     item:init()
     facility:init()
+
+    -- 监听“上/下载具”：开小车需求靠玩家骑车带着宝宝完成
+    self.triggers:global({ EVENT.SPEC_LIFEENTITY_ENTER_VEHICLE }, function(event_name, actor, data)
+        self:_on_vehicle_enter(data)
+    end)
+    self.triggers:global({ EVENT.SPEC_LIFEENTITY_EXIT_VEHICLE }, function(event_name, actor, data)
+        self:_on_vehicle_exit(data)
+    end)
 
     for index = 1, self.config.baby.count do
         self:_create_baby(index)
@@ -167,6 +180,70 @@ function BabyAgentManager:_find_agent_by_unit(unit)
         end
     end
     return nil
+end
+
+---@param rider Unit|LifeEntity|nil
+---@return BabyAgent|nil
+function BabyAgentManager:_find_riding_agent_for(rider)
+    if not rider then
+        return nil
+    end
+    for index = 1, #self.agents do
+        local agent = self.agents[index]
+        if not agent.destroyed and agent:is_riding_state() and UnitUtil.same_unit(agent.last_lift_unit, rider) then
+            return agent
+        end
+    end
+    return nil
+end
+
+---@param unit Unit|LifeEntity|nil
+---@return boolean
+function BabyAgentManager:_is_unit_driving(unit)
+    if not unit then
+        return false
+    end
+    local id = UnitUtil.get_id(unit)
+    if id ~= nil and self.driving_riders[id] then
+        return true
+    end
+    if GameAPI and GameAPI.get_driving_vehicle then
+        local ok, vehicle = pcall(function()
+            return GameAPI.get_driving_vehicle(unit)
+        end)
+        if ok and vehicle then
+            return true
+        end
+    end
+    return false
+end
+
+---@param data table|nil
+function BabyAgentManager:_on_vehicle_enter(data)
+    local rider = data and data.unit or nil
+    local id = rider and UnitUtil.get_id(rider) or nil
+    if id ~= nil then
+        self.driving_riders[id] = data and data.vehicle or true
+    end
+    Log.info("vehicle enter rider", tostring(id))
+    local agent = self:_find_riding_agent_for(rider)
+    if agent then
+        agent:on_carrier_enter_vehicle(data and data.vehicle or nil)
+    end
+end
+
+---@param data table|nil
+function BabyAgentManager:_on_vehicle_exit(data)
+    local rider = data and data.unit or nil
+    local id = rider and UnitUtil.get_id(rider) or nil
+    if id ~= nil then
+        self.driving_riders[id] = nil
+    end
+    Log.info("vehicle exit rider", tostring(id))
+    local agent = self:_find_riding_agent_for(rider)
+    if agent then
+        agent:on_carrier_exit_vehicle()
+    end
 end
 
 ---@param item BabyItemRecord

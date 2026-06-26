@@ -176,7 +176,9 @@ function FacilityService:_random_duration(need)
     if raw < 0 then
         raw = -raw
     end
-    return min_seconds + (raw % span)
+    -- 必须返回 Fixed（小数）：该值会作为 call_delay_time 的间隔使用，
+    -- 传整数会被当成 0 立即触发，导致秋千互动“坐下即结束”。
+    return (min_seconds + (raw % span)) + 0.0
 end
 
 ---@param agent BabyAgent|nil

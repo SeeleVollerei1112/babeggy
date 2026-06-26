@@ -24,6 +24,12 @@ local Prefab = require("Data.Prefab")
 ---@field reject_hold_delay Fixed
 ---@field reject_throw_delay Fixed
 ---@field status_height Fixed
+---@field ride_min_seconds integer
+---@field ride_max_seconds integer
+---@field ride_seat_offset Fixed[]
+---@field ride_confirm_seconds Fixed
+---@field ride_idle_grace Fixed
+---@field ride_mount_radius Fixed
 
 ---@class BabyScoringConfig
 ---@field satisfy_score integer
@@ -38,12 +44,15 @@ local Prefab = require("Data.Prefab")
 
 ---@class BabyNeedDef
 ---@field id string
----@field resolver "equipment"|"facility"
+---@field resolver "equipment"|"facility"|"ride"
+---@field ride_seat_offset Fixed[]|nil
+---@field vehicle_name string|nil
 ---@field item_key integer|nil
 ---@field item_name string|nil
 ---@field facility_id string|nil
 ---@field facility_name string|nil
 ---@field area_name string|nil
+---@field facility_kind "swing"|nil
 ---@field action_text string
 ---@field need_text string
 ---@field matched_text string
@@ -96,6 +105,13 @@ Config.baby = {
     reject_hold_delay = 1.0, -- 捡到错误物品后，拿在手上多久再丢出去（秒）；call_delay_time 需要 Fixed，必须写成小数
     reject_throw_delay = 2.0, -- 丢掉错误物品到表现不满意之间的间隔（秒）；call_delay_time 需要 Fixed，必须写成小数
     status_height = 1.5,
+    -- 开小车需求（宝宝挂在玩家头上跟随骑行）默认值
+    ride_min_seconds = 15, -- 需要“玩家正在骑车”累计多少秒才满足
+    ride_max_seconds = 25,
+    ride_seat_offset = { 0, 1.2, 0 }, -- 宝宝相对玩家的座位偏移（默认头顶）
+    ride_confirm_seconds = 6.0, -- 放下后多久内没坐上载具就当作普通放下（秒，必须小数）
+    ride_idle_grace = 5.0, -- 骑行中玩家下车多久就放弃（秒，必须小数）
+    ride_mount_radius = 1.2, -- 玩家与载具坐标距离小于此值即视为“坐上了载具”
 }
 
 Config.scoring = {
@@ -160,6 +176,18 @@ Config.needs = {
         seat_offset = { 1, 1.2, 1 }, -- 临时可见偏移，验证绑定后改回真实座位偏移（原 { 1, -4, 1 } Y 为负会沉到地下）
         seat_rotation = { 0, -90, 0 },
         seat_anim_id = 21013,
+    },
+    {
+        id = "baby_car",
+        resolver = "ride",
+        vehicle_name = "雪地滑板0", -- 用于判定“玩家是否坐上了这个载具”（坐标重合即视为骑行）
+        action_text = "开小车",
+        need_text = "想要开小车",
+        matched_text = "开小车中",
+        satisfied_text = "开够小车了",
+        interact_min_seconds = 15, -- 需要玩家骑车累计多少秒（覆盖 baby.ride_*）
+        interact_max_seconds = 25,
+        ride_seat_offset = { 0, 1.2, 0 }, -- 宝宝挂在玩家头顶的偏移，可按角色高度微调
     },
 }
 

@@ -15,6 +15,7 @@ function SatisfiedState:enter(context)
     local agent = self.agent
     local item = context and context.item or nil
     local facility = context and context.facility or nil
+    local is_ride = context and context.ride or false
     local target = item or facility
     agent:cancel_need_countdown()
     agent:set_busy(true)
@@ -22,7 +23,7 @@ function SatisfiedState:enter(context)
     agent:stop_movement()
     agent:select_equipped_slot()
 
-    if target then
+    if target or is_ride then
         agent:set_status(agent.services.resolver:get_satisfied_text(agent.current_need, target))
         agent.services.task:emit_baby_satisfied(agent, target)
         agent.services.score:award_satisfied(agent.last_role)
@@ -37,6 +38,10 @@ function SatisfiedState:enter(context)
         if agent:is_in_state(agent.enum.BabyState.Satisfied) then
             if facility then
                 agent:finish_facility_satisfied(facility)
+            elseif is_ride then
+                -- 开小车满足：不销毁物品、不结算设施，直接换下一个需求
+                agent:choose_next_need()
+                agent:enter_idle()
             else
                 agent:finish_satisfied(item)
             end
