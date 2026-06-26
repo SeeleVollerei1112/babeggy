@@ -1,4 +1,6 @@
 local setmetatableindex_
+---@param t table
+---@param index table
 setmetatableindex_ = function(t, index)
     local mt = getmetatable(t)
     if not mt then
@@ -12,6 +14,20 @@ setmetatableindex_ = function(t, index)
     end
 end
 
+---@class LuaClass
+---@field __cname string
+---@field __type string
+---@field __index table
+---@field __create fun(...):table|nil
+---@field __supers LuaClass[]|nil
+---@field super LuaClass|nil
+---@field Ctor fun(self:any, ...)
+---@field New fun(...):any
+---@field Create fun(self:LuaClass, ...):any
+
+---@param class_name string
+---@param ... LuaClass|fun(...):table
+---@return LuaClass
 local function class(class_name, ...)
     local cls = { __cname = class_name, __type = "LuaClass" }
     local supers = { ... }

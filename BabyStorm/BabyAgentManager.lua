@@ -4,6 +4,7 @@ local ArenaService = require("BabyStorm.Services.ArenaService")
 local NeedService = require("BabyStorm.Services.NeedService")
 local NeedResolver = require("BabyStorm.Services.NeedResolver")
 local ItemService = require("BabyStorm.Services.ItemService")
+local FacilityService = require("BabyStorm.Services.FacilityService")
 local ScoreService = require("BabyStorm.Services.ScoreService")
 local TaskEventService = require("BabyStorm.Services.TaskEventService")
 local DifficultyService = require("BabyStorm.Services.DifficultyService")
@@ -15,8 +16,39 @@ local TriggerRegistry = require("App.TriggerRegistry")
 local UnitUtil = require("Util.UnitUtil")
 local Log = require("Util.Log")
 
+---@class BabyServices
+---@field arena ArenaService
+---@field resolver NeedResolver
+---@field need NeedService
+---@field item ItemService
+---@field facility FacilityService
+---@field score ScoreService
+---@field task TaskEventService
+---@field difficulty DifficultyService
+---@field round RoundService
+---@field view BabySceneView
+---@field triggers TriggerRegistry
+---@field game_view_model GameViewModel
+
+---@class BabyStormDebugSnapshot
+---@field started boolean
+---@field baby_count integer
+---@field chaos_level integer
+---@field satisfied_count integer
+---@field elapsed_seconds integer
+---@field remaining_seconds integer
+---@field player_count integer
+
+---@class BabyAgentManager
+---@field application GameApplication|nil
+---@field config BabyStormConfig
+---@field agents BabyAgent[]
+---@field services BabyServices|nil
+---@field started boolean
+---@field triggers TriggerRegistry
 local BabyAgentManager = Class("BabyAgentManager")
 
+---@param application GameApplication|nil
 function BabyAgentManager:Ctor(application)
     self.application = application
     self.config = Config
@@ -26,6 +58,7 @@ function BabyAgentManager:Ctor(application)
     self.triggers = TriggerRegistry.New()
 end
 
+---@return boolean
 function BabyAgentManager:start()
     if self.started then
         return true
@@ -48,6 +81,8 @@ function BabyAgentManager:start()
     local item = ItemService.New(self.config, arena)
     item:set_trigger_registry(self.triggers)
     item:set_need_resolver(resolver)
+    local facility = FacilityService.New(self.config)
+    facility:set_need_resolver(resolver)
     local game_view_model = GameViewModel.New()
     local score = ScoreService.New(self.config, sessions)
     local task = TaskEventService.New()
@@ -60,6 +95,7 @@ function BabyAgentManager:start()
         resolver = resolver,
         need = need,
         item = item,
+        facility = facility,
         score = score,
         task = task,
         difficulty = difficulty,
@@ -73,6 +109,7 @@ function BabyAgentManager:start()
         self:_on_item_obtained(item_record, data)
     end)
     item:init()
+    facility:init()
 
     for index = 1, self.config.baby.count do
         self:_create_baby(index)
@@ -85,6 +122,8 @@ function BabyAgentManager:start()
     return true
 end
 
+---@param index integer
+---@return BabyAgent|nil
 function BabyAgentManager:_create_baby(index)
     local unit = GameAPI.create_life_entity(
         self.config.baby.prefab_id,
@@ -114,6 +153,8 @@ function BabyAgentManager:_create_baby(index)
     return agent
 end
 
+---@param unit Unit|LifeEntity|nil
+---@return BabyAgent|nil
 function BabyAgentManager:_find_agent_by_unit(unit)
     if not unit then
         return nil
@@ -128,6 +169,8 @@ function BabyAgentManager:_find_agent_by_unit(unit)
     return nil
 end
 
+---@param item BabyItemRecord
+---@param data table|nil
 function BabyAgentManager:_on_item_obtained(item, data)
     if not (self.started and item and data) then
         return
@@ -139,12 +182,14 @@ function BabyAgentManager:_on_item_obtained(item, data)
         return
     end
     if self.services and self.services.resolver and not self.services.resolver:item_matches_need(item, agent.current_need) then
-        agent:enter_upset({ item = item, reason = "obtained_wrong_item" })
+        -- 拿到了不是宝宝想要的东西：先丢掉，再表示不满意
+        agent:reject_wrong_item(item)
         return
     end
     agent:complete_item_obtained(item, data and data.count or 1)
 end
 
+---@return nil
 function BabyAgentManager:destroy()
     if not self.started and not self.services then
         return
@@ -170,6 +215,9 @@ function BabyAgentManager:destroy()
         if self.services.item then
             self.services.item:destroy()
         end
+        if self.services.facility then
+            self.services.facility:destroy()
+        end
     end
 
     self.services = nil
@@ -178,6 +226,7 @@ function BabyAgentManager:destroy()
     Log.info("manager destroyed")
 end
 
+---@return BabyStormDebugSnapshot
 function BabyAgentManager:get_debug_snapshot()
     local snapshot = {
         started = self.started,

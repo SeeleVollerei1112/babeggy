@@ -1,22 +1,26 @@
 ---@export_plugin
 local BabyStormController = require("BabyStorm.BabyStormController")
 
+---@class BabyStormDebugPlugin
 local Debug = {}
 
 ---@export_plugin
 ---@desc [BabyStorm] 启动玩法
+---@return nil
 function Debug.start()
     BabyStormController.init()
 end
 
 ---@export_plugin
 ---@desc [BabyStorm] 停止玩法
+---@return nil
 function Debug.stop()
     BabyStormController.destroy()
 end
 
 ---@export_plugin
 ---@desc [BabyStorm] 打印运行状态
+---@return nil
 function Debug.snapshot()
     local manager = BabyStormController.get_manager()
     if not manager then

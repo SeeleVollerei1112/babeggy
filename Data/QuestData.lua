@@ -1,5 +1,26 @@
 ---AUTTO EXPORT BY EGGITOR PLUGIN, PLEASE DO NOT EDIT
 
+---@class QuestTargetDef
+---@field finishEvent string
+---@field id integer
+---@field triggerEvent string
+---@field type integer
+
+---@class QuestTaskDef
+---@field context string
+---@field id integer
+---@field startEvent string
+---@field targets QuestTargetDef[]
+
+---@class QuestDef
+---@field acceptEvent string
+---@field failEvent string
+---@field id integer
+---@field rewards any[]
+---@field tasks QuestTaskDef[]
+---@field type integer
+
+---@type table<string, QuestDef>
 return {
 	["新手引导"] = {
 		acceptEvent = "",
@@ -21,27 +42,20 @@ return {
 				},
 			},
 			{
-				context = "",
+				context = "将宝宝蛋带到想要的物品处对准物品并放下",
 				id = 2,
 				startEvent = "",
 				targets = {
 					{
 						finishEvent = "",
 						id = 1,
-						triggerEvent = "",
+						triggerEvent = "TASK_BABY_PICK_ITEM",
 						type = 1,
 					},
-				},
-			},
-			{
-				context = "别哭,别哭",
-				id = 3,
-				startEvent = "",
-				targets = {
 					{
 						finishEvent = "",
-						id = 1,
-						triggerEvent = "",
+						id = 2,
+						triggerEvent = "TASK_BABY_WRONG_ITEM",
 						type = 1,
 					},
 				},

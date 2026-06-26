@@ -1,7 +1,14 @@
 local Class = require("BaseClass")
 
+---@class DifficultyService
+---@field config BabyStormConfig
+---@field view_model GameViewModel|nil
+---@field satisfied_count integer
+---@field chaos_level integer
 local DifficultyService = Class("DifficultyService")
 
+---@param config BabyStormConfig
+---@param game_view_model GameViewModel|nil
 function DifficultyService:Ctor(config, game_view_model)
     self.config = config
     self.view_model = game_view_model
@@ -13,6 +20,7 @@ function DifficultyService:Ctor(config, game_view_model)
     end
 end
 
+---@param agent BabyAgent
 function DifficultyService:on_baby_satisfied(agent)
     self.satisfied_count = self.satisfied_count + 1
 
@@ -31,6 +39,7 @@ function DifficultyService:on_baby_satisfied(agent)
     end
 end
 
+---@return integer
 function DifficultyService:get_chaos_level()
     return self.chaos_level
 end

@@ -1,7 +1,24 @@
 local Class = require("BaseClass")
 
+---@alias ViewModelField string
+---@alias ViewModelDelegate fun(view_model:ViewModelBase, field_name:ViewModelField)
+
+---@class ViewModelDelegateRecord
+---@field handle integer
+---@field fn ViewModelDelegate
+---@field owner any
+---@field alive boolean
+
+---@class ViewModelBase
+---@field _field_values table<string, any>
+---@field _field_delegates table<string, ViewModelDelegateRecord[]>
+---@field _next_handle integer
+---@field _batch_depth integer
+---@field _pending_set table<string, boolean>|nil
+---@field _pending_order string[]|nil
 local ViewModelBase = Class("ViewModelBase")
 
+---@return nil
 function ViewModelBase:Ctor()
     self._field_values = {}
     self._field_delegates = {}
@@ -11,6 +28,10 @@ function ViewModelBase:Ctor()
     self._pending_order = nil
 end
 
+---@param field_name ViewModelField
+---@param fn ViewModelDelegate
+---@param owner any
+---@return integer|nil
 function ViewModelBase:add_field_changed_delegate(field_name, fn, owner)
     if type(field_name) ~= "string" or type(fn) ~= "function" then
         return nil
@@ -28,6 +49,9 @@ function ViewModelBase:add_field_changed_delegate(field_name, fn, owner)
     return handle
 end
 
+---@param field_name ViewModelField
+---@param handle integer
+---@return boolean
 function ViewModelBase:remove_field_changed_delegate(field_name, handle)
     local list = self._field_delegates[field_name]
     if not list then
@@ -45,6 +69,8 @@ function ViewModelBase:remove_field_changed_delegate(field_name, handle)
     return false
 end
 
+---@param owner any
+---@return integer
 function ViewModelBase:remove_all_delegates(owner)
     local count = 0
     for _, list in pairs(self._field_delegates) do
@@ -59,6 +85,7 @@ function ViewModelBase:remove_all_delegates(owner)
     return count
 end
 
+---@param field_name ViewModelField
 function ViewModelBase:broadcast_field_changed(field_name)
     local list = self._field_delegates[field_name]
     if not list or #list == 0 then
@@ -78,10 +105,12 @@ function ViewModelBase:broadcast_field_changed(field_name)
     end
 end
 
+---@return nil
 function ViewModelBase:begin_batch()
     self._batch_depth = self._batch_depth + 1
 end
 
+---@return nil
 function ViewModelBase:end_batch()
     if self._batch_depth == 0 then
         return
@@ -103,6 +132,7 @@ function ViewModelBase:end_batch()
     end
 end
 
+---@param fn fun()
 function ViewModelBase:batch(fn)
     self:begin_batch()
     local ok, err = pcall(fn)
@@ -112,6 +142,7 @@ function ViewModelBase:batch(fn)
     end
 end
 
+---@param field_name ViewModelField
 function ViewModelBase:_mark_pending(field_name)
     if not self._pending_set then
         self._pending_set = {}
@@ -124,6 +155,9 @@ function ViewModelBase:_mark_pending(field_name)
     end
 end
 
+---@param field_name ViewModelField
+---@param value any
+---@return boolean
 function ViewModelBase:set_property(field_name, value)
     if value == nil or self._field_values[field_name] == value then
         return false
@@ -138,14 +172,19 @@ function ViewModelBase:set_property(field_name, value)
     return true
 end
 
+---@param field_name ViewModelField
+---@return any
 function ViewModelBase:get_property(field_name)
     return self._field_values[field_name]
 end
 
+---@param field_name ViewModelField
+---@param value any
 function ViewModelBase:set_property_silently(field_name, value)
     self._field_values[field_name] = value
 end
 
+---@return nil
 function ViewModelBase:clear()
     self._field_delegates = {}
 end

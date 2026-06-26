@@ -2,6 +2,8 @@ local UnitUtil = require("Util.UnitUtil")
 
 local RoleUtil = {}
 
+---@param role Role|any
+---@return RoleID|integer|nil
 function RoleUtil.get_role_id(role)
     if role and role.get_roleid then
         return role.get_roleid()
@@ -9,6 +11,8 @@ function RoleUtil.get_role_id(role)
     return nil
 end
 
+---@param unit Unit|LifeEntity|any
+---@return Role|nil
 function RoleUtil.get_role_by_unit(unit)
     if not unit then
         return nil

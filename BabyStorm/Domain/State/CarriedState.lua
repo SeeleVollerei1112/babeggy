@@ -1,12 +1,15 @@
 local Class = require("BaseClass")
 local StateBase = require("BabyStorm.Domain.State.StateBase")
 
+---@class CarriedState: StateBase
 local CarriedState = Class("BabyCarriedState", StateBase)
 
+---@param agent BabyAgent
 function CarriedState:Ctor(agent)
     CarriedState.super.Ctor(self, agent)
 end
 
+---@param context BabyStateContext|nil
 function CarriedState:enter(context)
     CarriedState.super.enter(self, context)
     local agent = self.agent

@@ -1,12 +1,26 @@
 local Class = require("BaseClass")
 local Log = require("Util.Log")
 
+---@alias TriggerCallback fun(event_name:string, actor:any, data:any)
+---@alias TriggerEventSpec any[]
+
+---@class TriggerRecord
+---@field kind "global"|"unit"
+---@field unit Unit|LifeEntity|Equipment|nil
+---@field handle any
+
+---@class TriggerRegistry
+---@field _handles TriggerRecord[]
 local TriggerRegistry = Class("TriggerRegistry")
 
+---@return nil
 function TriggerRegistry:Ctor()
     self._handles = {}
 end
 
+---@param event_spec TriggerEventSpec
+---@param callback TriggerCallback
+---@return any
 function TriggerRegistry:global(event_spec, callback)
     local handle = LuaAPI.global_register_trigger_event(event_spec, callback)
     if handle then
@@ -18,6 +32,10 @@ function TriggerRegistry:global(event_spec, callback)
     return handle
 end
 
+---@param unit Unit|LifeEntity|Equipment|nil
+---@param event_spec TriggerEventSpec
+---@param callback TriggerCallback
+---@return any
 function TriggerRegistry:unit(unit, event_spec, callback)
     if not unit then
         return nil
@@ -34,6 +52,7 @@ function TriggerRegistry:unit(unit, event_spec, callback)
     return handle
 end
 
+---@return nil
 function TriggerRegistry:destroy()
     for index = #self._handles, 1, -1 do
         local record = self._handles[index]

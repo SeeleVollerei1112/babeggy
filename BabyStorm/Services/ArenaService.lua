@@ -1,13 +1,18 @@
 local Class = require("BaseClass")
 local Log = require("Util.Log")
 
+---@class ArenaService
+---@field config BabyStormConfig
+---@field area Unit|nil
 local ArenaService = Class("ArenaService")
 
+---@param config BabyStormConfig
 function ArenaService:Ctor(config)
     self.config = config
     self.area = nil
 end
 
+---@return boolean
 function ArenaService:init()
     local area_name = self.config.arena.area_name
     self.area = LuaAPI.query_unit(area_name)
@@ -21,6 +26,7 @@ function ArenaService:init()
     return true
 end
 
+---@return Vector3
 function ArenaService:random_point()
     if self.area and self.area.random_point then
         return self.area.random_point()
@@ -31,6 +37,8 @@ function ArenaService:random_point()
     return math.Vector3(0, 1, 0)
 end
 
+---@param point Vector3
+---@return Vector3
 function ArenaService:ground_point(point)
     local arena = self.config.arena
     local start_pos = math.Vector3(point.x, point.y + arena.ground_ray_up, point.z)
@@ -49,6 +57,7 @@ function ArenaService:ground_point(point)
     return point
 end
 
+---@return Vector3
 function ArenaService:random_ground_point()
     return self:ground_point(self:random_point())
 end

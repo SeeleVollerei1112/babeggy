@@ -1,12 +1,18 @@
 local Class = require("BaseClass")
 
+---@class ScoreService
+---@field config BabyStormConfig
+---@field sessions PlayerSessionRegistry|nil
 local ScoreService = Class("ScoreService")
 
+---@param config BabyStormConfig
+---@param sessions PlayerSessionRegistry|nil
 function ScoreService:Ctor(config, sessions)
     self.config = config
     self.sessions = sessions
 end
 
+---@param role Role|nil
 function ScoreService:award_satisfied(role)
     local reward = self.config.scoring.satisfy_score
     local session = self.sessions and self.sessions:find(role) or nil
@@ -25,6 +31,7 @@ function ScoreService:award_satisfied(role)
     end
 end
 
+---@param role Role|nil
 function ScoreService:penalize_wrong(role)
     local penalty = self.config.scoring.wrong_item_penalty
     local session = self.sessions and self.sessions:find(role) or nil

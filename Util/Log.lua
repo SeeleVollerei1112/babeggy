@@ -1,7 +1,9 @@
 local Log = {}
 
+---@type string
 Log.prefix = "[BabyStorm]"
 
+---@param ... any
 function Log.info(...)
     local parts = {}
     for index = 1, select("#", ...) do
@@ -10,6 +12,7 @@ function Log.info(...)
     LuaAPI.log(Log.prefix .. " " .. table.concat(parts, " "), 0)
 end
 
+---@param ... any
 function Log.warn(...)
     local parts = {}
     for index = 1, select("#", ...) do

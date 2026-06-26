@@ -41,6 +41,7 @@
 ---@desc 设置蛋仔位置
 ---@param role_id RoleID 玩家ID
 ---@param position Vector3 位置
+---@return nil
 function SetPosition(role_id, position)
 	local role = GameAPI.get_role(role_id)
 	if not role then
@@ -58,6 +59,7 @@ end
 ---@desc 一键结束
 ---@param role_id RoleID 玩家ID
 ---@param result boolean 是否胜利
+---@return nil
 function SetRoleGameResult(role_id, result)
 	local role = GameAPI.get_role(role_id)
 	if not role then

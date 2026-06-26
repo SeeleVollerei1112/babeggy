@@ -595,7 +595,7 @@ local function create_baby(index)
         end)
 
     LuaAPI.unit_register_trigger_event(baby.unit, { EVENT.SPEC_LIFEENTITY_LIFTED_END }, function(event_name, actor, data)
-        on_baby_lifted_end(baby, data)
+        on_baby_lifted_end(baby)
     end)
 
     choose_need(baby)

@@ -1,5 +1,10 @@
 ---AUTTO EXPORT BY EGGITOR PLUGIN, PLEASE DO NOT EDIT
 
+---@class EquipmentPrefabDef
+---@field desc string
+---@field prefabID integer
+
+---@type table<string, EquipmentPrefabDef>
 return {
 	["冰激凌_自定义"] = {
 		desc = "",

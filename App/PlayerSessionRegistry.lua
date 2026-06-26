@@ -1,13 +1,27 @@
 local Class = require("BaseClass")
 local RoleUtil = require("Util.RoleUtil")
 
+---@class PlayerSession
+---@field role Role
+---@field role_id RoleID|integer
+---@field satisfied_count integer
+---@field wrong_count integer
+---@field score_awarded integer
+
+---@class PlayerSessionRegistry
+---@field _sessions table<RoleID|integer, PlayerSession>
+---@field _ordered_role_ids (RoleID|integer)[]
 local PlayerSessionRegistry = Class("PlayerSessionRegistry")
 
+---@return nil
 function PlayerSessionRegistry:Ctor()
     self._sessions = {}
     self._ordered_role_ids = {}
 end
 
+---@param role Role
+---@param role_id RoleID|integer
+---@return PlayerSession
 function PlayerSessionRegistry:_create_session(role, role_id)
     return {
         role = role,
@@ -18,6 +32,8 @@ function PlayerSessionRegistry:_create_session(role, role_id)
     }
 end
 
+---@param role Role
+---@return PlayerSession|nil
 function PlayerSessionRegistry:add_role(role)
     local role_id = RoleUtil.get_role_id(role)
     if not role_id then
@@ -37,6 +53,8 @@ function PlayerSessionRegistry:add_role(role)
     return session
 end
 
+---@param role Role|nil
+---@return PlayerSession|nil
 function PlayerSessionRegistry:find(role)
     local role_id = RoleUtil.get_role_id(role)
     if not role_id then
@@ -45,6 +63,7 @@ function PlayerSessionRegistry:find(role)
     return self._sessions[role_id]
 end
 
+---@return nil
 function PlayerSessionRegistry:sync_all()
     local roles = GameAPI.get_all_valid_roles() or {}
     local alive = {}
@@ -67,6 +86,7 @@ function PlayerSessionRegistry:sync_all()
     end
 end
 
+---@param callback fun(session:PlayerSession, role_id:RoleID|integer)
 function PlayerSessionRegistry:for_each(callback)
     for index = 1, #self._ordered_role_ids do
         local role_id = self._ordered_role_ids[index]
@@ -77,10 +97,12 @@ function PlayerSessionRegistry:for_each(callback)
     end
 end
 
+---@return integer
 function PlayerSessionRegistry:count()
     return #self._ordered_role_ids
 end
 
+---@return nil
 function PlayerSessionRegistry:clear()
     self._sessions = {}
     self._ordered_role_ids = {}

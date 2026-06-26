@@ -1,11 +1,24 @@
 local Class = require("BaseClass")
 
+---@class ViewBindingRecord
+---@field vm ViewModelBase
+---@field field string
+---@field handle integer
+
+---@class ViewBinding
+---@field _bindings ViewBindingRecord[]
 local ViewBinding = Class("ViewBinding")
 
+---@return nil
 function ViewBinding:Ctor()
     self._bindings = {}
 end
 
+---@param view_model ViewModelBase|nil
+---@param field string|nil
+---@param on_changed ViewModelDelegate|nil
+---@param execute_on_bind boolean|nil
+---@return integer|nil
 function ViewBinding:bind_one_way(view_model, field, on_changed, execute_on_bind)
     if not (view_model and field and on_changed) then
         return nil
@@ -22,6 +35,7 @@ function ViewBinding:bind_one_way(view_model, field, on_changed, execute_on_bind
     return handle
 end
 
+---@param bindings any[][]
 function ViewBinding:bind_all(bindings)
     for index = 1, #bindings do
         local binding = bindings[index]
@@ -29,6 +43,7 @@ function ViewBinding:bind_all(bindings)
     end
 end
 
+---@return nil
 function ViewBinding:destroy()
     local seen = {}
     for index = #self._bindings, 1, -1 do

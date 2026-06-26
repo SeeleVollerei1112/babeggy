@@ -1,8 +1,11 @@
 local Class = require("BaseClass")
 local ViewModelBase = require("MVVM.ViewModelBase")
 
+---@class BabyViewModel: ViewModelBase
+---@field Field table<string, string>
 local BabyViewModel = Class("BabyViewModel", ViewModelBase)
 
+---@type table<string, string>
 BabyViewModel.Field = {
     State = "State",
     StatusText = "StatusText",
@@ -24,22 +27,29 @@ function BabyViewModel:Ctor()
     self:set_property_silently(field.Stress, 0)
 end
 
+---@param value integer
+---@return boolean
 function BabyViewModel:set_state(value)
     return self:set_property(self.Field.State, value)
 end
 
+---@return integer
 function BabyViewModel:get_state()
     return self:get_property(self.Field.State)
 end
 
+---@param value string|nil
+---@return boolean
 function BabyViewModel:set_status_text(value)
     return self:set_property(self.Field.StatusText, value or "")
 end
 
+---@return string
 function BabyViewModel:get_status_text()
     return self:get_property(self.Field.StatusText)
 end
 
+---@param need BabyNeedDef|nil
 function BabyViewModel:set_need(need)
     if need then
         self:begin_batch()
@@ -54,22 +64,29 @@ function BabyViewModel:set_need(need)
     end
 end
 
+---@return string
 function BabyViewModel:get_need_id()
     return self:get_property(self.Field.NeedId)
 end
 
+---@return string
 function BabyViewModel:get_need_text()
     return self:get_property(self.Field.NeedText)
 end
 
+---@param value boolean
+---@return boolean
 function BabyViewModel:set_busy(value)
     return self:set_property(self.Field.Busy, value and true or false)
 end
 
+---@return boolean
 function BabyViewModel:is_busy()
     return self:get_property(self.Field.Busy)
 end
 
+---@param delta integer|nil
+---@return boolean
 function BabyViewModel:add_stress(delta)
     local value = self:get_property(self.Field.Stress) + (delta or 0)
     if value < 0 then

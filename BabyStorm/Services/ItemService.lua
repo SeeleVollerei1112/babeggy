@@ -2,8 +2,24 @@ local Class = require("BaseClass")
 local UnitUtil = require("Util.UnitUtil")
 local Log = require("Util.Log")
 
+---@class BabyItemRecord
+---@field def BabyNeedDef
+---@field equipment Equipment
+---@field done boolean
+
+---@alias ItemObtainedCallback fun(item:BabyItemRecord, data:table|nil)
+
+---@class ItemService
+---@field config BabyStormConfig
+---@field arena ArenaService
+---@field resolver NeedResolver|nil
+---@field items BabyItemRecord[]
+---@field _obtained_callback ItemObtainedCallback|nil
+---@field triggers TriggerRegistry|nil
 local ItemService = Class("ItemService")
 
+---@param config BabyStormConfig
+---@param arena ArenaService
 function ItemService:Ctor(config, arena)
     self.config = config
     self.arena = arena
@@ -12,14 +28,17 @@ function ItemService:Ctor(config, arena)
     self.triggers = nil
 end
 
+---@param callback ItemObtainedCallback
 function ItemService:on_obtained(callback)
     self._obtained_callback = callback
 end
 
+---@param triggers TriggerRegistry
 function ItemService:set_trigger_registry(triggers)
     self.triggers = triggers
 end
 
+---@return nil
 function ItemService:init()
     local needs = self.resolver and self.resolver:get_spawnable_equipment_needs() or self.config.needs
     for index = 1, #needs do
@@ -27,10 +46,13 @@ function ItemService:init()
     end
 end
 
+---@param resolver NeedResolver
 function ItemService:set_need_resolver(resolver)
     self.resolver = resolver
 end
 
+---@param equipment Equipment|nil
+---@param need BabyNeedDef
 function ItemService:_set_item_text(equipment, need)
     if not equipment then
         return
@@ -54,6 +76,8 @@ function ItemService:_set_item_text(equipment, need)
     end
 end
 
+---@param need BabyNeedDef
+---@return BabyItemRecord|nil
 function ItemService:spawn_for_need(need)
     local equipment = GameAPI.create_equipment(need.item_key, self.arena:random_ground_point())
     if not equipment then
@@ -83,6 +107,7 @@ function ItemService:spawn_for_need(need)
     return item
 end
 
+---@param item BabyItemRecord|nil
 function ItemService:remove(item)
     if not item then
         return
@@ -96,6 +121,7 @@ function ItemService:remove(item)
     end
 end
 
+---@param item BabyItemRecord|nil
 function ItemService:destroy_and_respawn(item)
     if not item then
         return
@@ -108,6 +134,9 @@ function ItemService:destroy_and_respawn(item)
     self:spawn_for_need(item.def)
 end
 
+---@param pos Vector3
+---@param need BabyNeedDef|nil
+---@return BabyItemRecord|nil
 function ItemService:nearest_match(pos, need)
     local best = nil
     local best_dist = nil
@@ -138,11 +167,17 @@ function ItemService:nearest_match(pos, need)
     return nil
 end
 
+---@param pos Vector3
+---@param need_key integer|nil
+---@return BabyItemRecord|nil
 function ItemService:nearest_to(pos, need_key)
     local synthetic_need = need_key and { item_key = need_key, resolver = "equipment" } or nil
     return self:nearest_match(pos, synthetic_need)
 end
 
+---@param a Equipment|nil
+---@param b Equipment|nil
+---@return boolean
 local function same_equipment(a, b)
     if a == b then
         return true
@@ -155,6 +190,9 @@ local function same_equipment(a, b)
     return UnitUtil.same_unit(a_unit, b_unit)
 end
 
+---@param item BabyItemRecord|nil
+---@param baby BabyAgent|nil
+---@return boolean
 function ItemService:baby_has_equipment(item, baby)
     if not (item and baby and baby.unit and baby.unit.get_equipment_list) then
         return false
@@ -173,6 +211,9 @@ function ItemService:baby_has_equipment(item, baby)
     return false
 end
 
+---@param item BabyItemRecord|nil
+---@param baby BabyAgent|nil
+---@return boolean
 function ItemService:item_owned_by_baby(item, baby)
     if not (item and item.equipment and baby and baby.unit) then
         return false
@@ -193,6 +234,9 @@ function ItemService:item_owned_by_baby(item, baby)
     return false
 end
 
+---@param baby BabyAgent|nil
+---@param item BabyItemRecord|nil
+---@return boolean
 function ItemService:force_pickup(baby, item)
     if not (baby and baby.unit and baby.unit.swap_equipment_slot and item and item.equipment) then
         return false
@@ -202,6 +246,7 @@ function ItemService:force_pickup(baby, item)
     return true
 end
 
+---@return nil
 function ItemService:destroy()
     for index = #self.items, 1, -1 do
         local item = self.items[index]

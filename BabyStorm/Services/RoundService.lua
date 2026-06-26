@@ -1,7 +1,19 @@
 local Class = require("BaseClass")
 
+---@class RoundService
+---@field config BabyStormConfig
+---@field triggers TriggerRegistry
+---@field sessions PlayerSessionRegistry|nil
+---@field view_model GameViewModel|nil
+---@field elapsed_seconds integer
+---@field remaining_seconds integer
+---@field running boolean
 local RoundService = Class("RoundService")
 
+---@param config BabyStormConfig
+---@param triggers TriggerRegistry
+---@param sessions PlayerSessionRegistry|nil
+---@param game_view_model GameViewModel|nil
 function RoundService:Ctor(config, triggers, sessions, game_view_model)
     self.config = config
     self.triggers = triggers
@@ -12,6 +24,7 @@ function RoundService:Ctor(config, triggers, sessions, game_view_model)
     self.running = false
 end
 
+---@return nil
 function RoundService:start()
     if self.running then
         return
@@ -24,6 +37,7 @@ function RoundService:start()
     end)
 end
 
+---@return nil
 function RoundService:on_second_tick()
     if not self.running then
         return
@@ -40,6 +54,8 @@ function RoundService:on_second_tick()
     self:_sync_view_model()
 end
 
+---@private
+---@return nil
 function RoundService:_sync_view_model()
     if not self.view_model then
         return
@@ -52,6 +68,7 @@ function RoundService:_sync_view_model()
     end
 end
 
+---@return nil
 function RoundService:stop()
     self.running = false
 end
