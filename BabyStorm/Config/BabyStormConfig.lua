@@ -12,6 +12,7 @@ local Prefab = require("Data.Prefab")
 ---@field patrol_threshold Fixed
 ---@field ai_move_threshold Fixed
 ---@field pickup_radius Fixed
+---@field item_scan_interval Fixed
 ---@field pickup_check_interval Fixed
 ---@field pickup_timeout Fixed
 ---@field pickup_move_speed_ratio Fixed
@@ -24,12 +25,6 @@ local Prefab = require("Data.Prefab")
 ---@field reject_hold_delay Fixed
 ---@field reject_throw_delay Fixed
 ---@field status_height Fixed
----@field ride_min_seconds integer
----@field ride_max_seconds integer
----@field ride_seat_offset Fixed[]
----@field ride_confirm_seconds Fixed
----@field ride_idle_grace Fixed
----@field ride_mount_radius Fixed
 
 ---@class BabyScoringConfig
 ---@field satisfy_score integer
@@ -44,15 +39,24 @@ local Prefab = require("Data.Prefab")
 
 ---@class BabyNeedDef
 ---@field id string
----@field resolver "equipment"|"facility"|"ride"
----@field ride_seat_offset Fixed[]|nil
----@field vehicle_name string|nil
+---@field resolver "equipment"|"facility"
 ---@field item_key integer|nil
 ---@field item_name string|nil
 ---@field facility_id string|nil
 ---@field facility_name string|nil
 ---@field area_name string|nil
----@field facility_kind "swing"|nil
+---@field facility_kind "swing"|"vehicle"|nil
+---@field vehicle_drive_mode "kinematic"|"physics"|nil
+---@field vehicle_speed Fixed|nil
+---@field vehicle_seat_offset Fixed[]|nil
+---@field vehicle_enter_delay Fixed|nil
+---@field vehicle_move_segment Fixed|nil
+---@field vehicle_reach_radius Fixed|nil
+---@field vehicle_turn_speed Fixed|nil
+---@field vehicle_accel Fixed|nil
+---@field vehicle_arrive_radius Fixed|nil
+---@field vehicle_ride_anim_key integer|nil
+---@field vehicle_ride_anim_id integer|nil
 ---@field action_text string
 ---@field need_text string
 ---@field matched_text string
@@ -93,6 +97,7 @@ Config.baby = {
     patrol_threshold = 4.0,
     ai_move_threshold = 0.5,
     pickup_radius = 4.0,
+    item_scan_interval = 0.5, -- 空闲/巡逻时多久就近扫描一次当前需求的物品（秒，必须小数）
     pickup_check_interval = 0.25,
     pickup_timeout = 5.0,
     pickup_move_speed_ratio = 2.0,
@@ -102,16 +107,9 @@ Config.baby = {
     timeout_action_id = 23,
     timeout_action_seconds = 10,
     bubble_show_seconds = 999999.0,
-    reject_hold_delay = 1.0, -- 捡到错误物品后，拿在手上多久再丢出去（秒）；call_delay_time 需要 Fixed，必须写成小数
+    reject_hold_delay = 1.0,  -- 捡到错误物品后，拿在手上多久再丢出去（秒）；call_delay_time 需要 Fixed，必须写成小数
     reject_throw_delay = 2.0, -- 丢掉错误物品到表现不满意之间的间隔（秒）；call_delay_time 需要 Fixed，必须写成小数
     status_height = 1.5,
-    -- 开小车需求（宝宝挂在玩家头上跟随骑行）默认值
-    ride_min_seconds = 15, -- 需要“玩家正在骑车”累计多少秒才满足
-    ride_max_seconds = 25,
-    ride_seat_offset = { 0, 1.2, 0 }, -- 宝宝相对玩家的座位偏移（默认头顶）
-    ride_confirm_seconds = 6.0, -- 放下后多久内没坐上载具就当作普通放下（秒，必须小数）
-    ride_idle_grace = 5.0, -- 骑行中玩家下车多久就放弃（秒，必须小数）
-    ride_mount_radius = 1.2, -- 玩家与载具坐标距离小于此值即视为“坐上了载具”
 }
 
 Config.scoring = {
@@ -179,19 +177,38 @@ Config.needs = {
     },
     {
         id = "baby_car",
-        resolver = "ride",
-        vehicle_name = "雪地滑板0", -- 用于判定“玩家是否坐上了这个载具”（坐标重合即视为骑行）
+        resolver = "facility",
+        facility_kind = "vehicle",
+        facility_id = "baby_car",
+        facility_name = "雪地滑板0", -- TODO: 改成场景里载具单位的实际名字
+        area_name = "tutorial_area", -- TODO: 改成限定小车巡游范围的触发区名字（可与秋千区不同）
         action_text = "开小车",
         need_text = "想要开小车",
-        matched_text = "开小车中",
+        matched_text = "去开小车",
         satisfied_text = "开够小车了",
-        interact_min_seconds = 15, -- 需要玩家骑车累计多少秒（覆盖 baby.ride_*）
-        interact_max_seconds = 25,
-        ride_seat_offset = { 0, 1.2, 0 }, -- 宝宝挂在玩家头顶的偏移，可按角色高度微调
+        interact_begin_event = "BABY_VEHICLE_RIDE_BEGIN",
+        interact_end_event = "BABY_VEHICLE_RIDE_END",
+        interact_min_seconds = 20,
+        interact_max_seconds = 40,
+        -- kinematic：用 set_position 挪车+粘宝宝，适配“雪地滑板”这类非可骑乘单位（默认，立即可用）
+        -- physics：try_enter_vehicle + VehicleComp 驱动，仅当该单位是真·可骑乘载具时才用
+        vehicle_drive_mode = "kinematic",
+        vehicle_speed = 3.0,                 -- 运动学模式下的最大移动速度（单位/秒）
+        vehicle_seat_offset = { 0, 0.5, 0 }, -- 宝宝相对载具的座位偏移（让宝宝坐在车上方）
+        vehicle_reach_radius = 2.0,          -- 距目标多近算到达，然后换下一个随机点
+        vehicle_turn_speed = 3.0,            -- 转向角速度上限（弧度/秒）：越大转弯越快、越小越平缓
+        vehicle_accel = 6.0,                 -- 加/减速度（单位/秒²）：起步加速、到点/转弯缓停的快慢
+        vehicle_arrive_radius = 5.0,         -- 进入此半径开始线性减速，实现到点缓停
+        -- 骑行动作两条路（优先用 anim_key）：
+        --   vehicle_ride_anim_key：AnimKey（座位动画那种大编号，如秋千 21013），走 force_play
+        --     强制播放，能长期保持动态骑行姿势、不被待机顶掉（首选，需要从编辑器取到骑行 AnimKey）
+        --   vehicle_ride_anim_id：全身动作预设（小编号，如哭闹 23、49），走 play_body_anim_by_id，
+        --     引擎约 1 秒后会强制切回待机、无法长期保持，仅作占位
+        vehicle_ride_anim_key = nil, -- TODO: 填入宝宝骑滑板姿势的 AnimKey
+        vehicle_ride_anim_id = 49,   -- 全身动作预设（占位，无法长期保持）
+        vehicle_enter_delay = 0.4,   -- physics 模式：上车后多久开始巡游（秒，必须小数）
+        vehicle_move_segment = 0.3,  -- physics 模式：每隔多久重新对准方向（秒，必须小数）
     },
 }
 
 return Config
-
-
-

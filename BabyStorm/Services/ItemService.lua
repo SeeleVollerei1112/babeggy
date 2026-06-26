@@ -58,21 +58,13 @@ function ItemService:_set_item_text(equipment, need)
         return
     end
 
+    -- 只改名字/描述。拾取交互交给物品预设自带的交互配置，脚本不再调用
+    -- enable_interact / set_interact_button_text，避免覆盖掉预设里配好的交互。
     if equipment.set_name then
         equipment.set_name(need.action_text)
     end
     if equipment.set_desc then
         equipment.set_desc(need.item_name)
-    end
-
-    local unit = equipment.get_unit and equipment.get_unit()
-    if unit then
-        if unit.enable_interact then
-            unit.enable_interact()
-        end
-        if unit.set_interact_button_text_by_index then
-            unit.set_interact_button_text_by_index(1, need.action_text)
-        end
     end
 end
 
@@ -148,7 +140,10 @@ function ItemService:nearest_match(pos, need)
             matches = self.resolver:item_matches_need(item, need)
         end
 
-        if not item.done and matches then
+        -- 被玩家/生物持有的物品不算“放在地上”，跳过：只认掉落在世界里的物品，
+        -- 避免宝宝去追别人手里还拿着的东西（“放到身边”才触发需求判断）
+        local held = item.equipment.has_owner and item.equipment.has_owner()
+        if not item.done and matches and not held then
             local item_pos = item.equipment.get_position and item.equipment.get_position()
             if item_pos then
                 local dist = UnitUtil.distance_sq(pos, item_pos)

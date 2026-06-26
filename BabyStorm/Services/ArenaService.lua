@@ -45,11 +45,17 @@ function ArenaService:ground_point(point)
     local end_pos = math.Vector3(point.x, point.y - arena.ground_ray_down, point.z)
     local best_y = nil
 
-    GameAPI.raycast_unit(start_pos, end_pos, { Enums.UnitType.OBSTACLE }, function(unit, hit_pos, normal)
-        if hit_pos and (not best_y or hit_pos.y > best_y) then
-            best_y = hit_pos.y
-        end
-    end)
+    -- 用单位射线打已摆放的 OBSTACLE 组件取地面高度。
+    -- 注：raycast_test 物理射线在本环境会内部报错（mask 取值未知），暂不使用。
+    if GameAPI.raycast_unit then
+        pcall(function()
+            GameAPI.raycast_unit(start_pos, end_pos, { Enums.UnitType.OBSTACLE }, function(unit, hit_pos, normal)
+                if hit_pos and (not best_y or hit_pos.y > best_y) then
+                    best_y = hit_pos.y
+                end
+            end)
+        end)
+    end
 
     if best_y then
         return math.Vector3(point.x, best_y, point.z)

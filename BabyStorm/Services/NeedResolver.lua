@@ -27,12 +27,6 @@ function NeedResolver:is_facility_need(need)
     return self:get_resolver_type(need) == "facility"
 end
 
----@param need BabyNeedDef|nil
----@return boolean
-function NeedResolver:is_ride_need(need)
-    return self:get_resolver_type(need) == "ride"
-end
-
 ---@param item BabyItemRecord|BabyFacilityRecord|nil
 ---@param need BabyNeedDef|nil
 ---@return boolean

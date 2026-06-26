@@ -19,7 +19,6 @@ Enum.BabyState = {
     Upset = 5,
     InteractingFacility = 6,
     Timeout = 7,
-    Riding = 8,
 }
 
 ---@type table<integer, string>
@@ -31,7 +30,6 @@ Enum.StateName = {
     [Enum.BabyState.Upset] = "Upset",
     [Enum.BabyState.InteractingFacility] = "InteractingFacility",
     [Enum.BabyState.Timeout] = "Timeout",
-    [Enum.BabyState.Riding] = "Riding",
 }
 
 ---@param state_id integer

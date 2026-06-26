@@ -68,19 +68,10 @@ function BabyAgent:Ctor(index, unit, services, config)
     self.need_countdown_remaining = nil
     self.timeout_action_anchor_pos = nil
     self.timeout_move_locked = false
+    self.ride_move_locked = false
     self.need_timeout_bonus_seconds = 0
     self.timeout_action_bonus_seconds = 0
     self.active_facility = nil
-    self.ride_token = 0
-    self.ride_elapsed = 0
-    self.ride_required = 0
-    self.ride_idle_elapsed = 0
-    self.ride_driving = false
-    self.ride_started = false
-    self.ride_vehicle = nil
-    self.ride_carrier = nil
-    self._ride_vehicle_unit = nil
-    self.ride_collision_disabled = false
     self.destroyed = false
 end
 
@@ -403,6 +394,40 @@ function BabyAgent:_unlock_timeout_move_state()
     self.timeout_move_locked = false
 end
 
+-- 骑滑板期间彻底锁住宝宝的 AI/移动，防止引擎因每帧 set_position 位移而触发
+-- 待机/移动动画，把强制播放的骑行动作顶掉。与超时锁同款 BUFF，但独立计数。
+function BabyAgent:lock_ride_move_state()
+    if not self.ride_move_locked then
+        if self.unit and self.unit.add_state then
+            pcall(function()
+                self.unit.add_state(Enums.BuffState.BUFF_FORBID_MOVE)
+            end)
+        end
+        self.ride_move_locked = true
+    end
+    if self.unit and self.unit.stop_ai then
+        pcall(function() self.unit.stop_ai() end)
+    end
+    if self.unit and self.unit.ai_command_stop_move then
+        pcall(function() self.unit.ai_command_stop_move(0.1) end)
+    end
+    if self.unit and self.unit.set_attr_ratio_fixed then
+        pcall(function() self.unit.set_attr_ratio_fixed("move_speed", 0.0) end)
+    end
+end
+
+function BabyAgent:unlock_ride_move_state()
+    if self.unit and self.ride_move_locked and self.unit.remove_state then
+        pcall(function()
+            self.unit.remove_state(Enums.BuffState.BUFF_FORBID_MOVE)
+        end)
+    end
+    self.ride_move_locked = false
+    if self.unit and self.unit.set_attr_ratio_fixed then
+        pcall(function() self.unit.set_attr_ratio_fixed("move_speed", 1.0) end)
+    end
+end
+
 ---@param duration integer
 function BabyAgent:_play_timeout_action(duration)
     local action_id = self.config.baby.timeout_action_id or 23
@@ -501,6 +526,40 @@ function BabyAgent:start_patrol()
 
     self.patrol_token = self.patrol_token + 1
     self:_command_next_patrol_point(self.patrol_token)
+    self:_scan_nearby_item(self.patrol_token)
+end
+
+-- 空闲/巡逻时就近扫描当前需求的物品：玩家把可拾取的小物件放到宝宝身边时，
+-- 宝宝据此自己去捡。与巡逻共用 patrol_token，离开空闲（cancel_patrol/进入其它状态）
+-- 即自动停止；只在不忙时反应（不打断正在进行的事），只认掉落在地上的系统物品。
+---@param token integer
+function BabyAgent:_scan_nearby_item(token)
+    if self.destroyed or not self.unit or self.patrol_token ~= token then
+        return
+    end
+
+    if not self.view_model:is_busy() then
+        local pos = self.unit.get_position and self.unit.get_position()
+        if pos then
+            -- 设施需求：按设施本体就近匹配（把滑板/秋千搬到宝宝旁也能触发）
+            local facility = self:find_match_for_current_need(pos)
+            if facility then
+                self:enter_state(Enum.BabyState.InteractingFacility, { facility = facility }, true)
+                return
+            end
+            -- 物品需求：就近匹配掉落在地上的物品
+            local item = self.services.item:nearest_match(pos, self.current_need)
+            if item then
+                -- 进入 SeekingItem（busy 置真），本扫描循环到此结束
+                self:enter_state(Enum.BabyState.SeekingItem, { item = item }, true)
+                return
+            end
+        end
+    end
+
+    LuaAPI.call_delay_time(self.config.baby.item_scan_interval, function()
+        self:_scan_nearby_item(token)
+    end)
 end
 
 ---@return Vector3
@@ -578,8 +637,6 @@ function BabyAgent:_new_state(state_id)
         cls = require("BabyStorm.Domain.State.UpsetState")
     elseif state_id == Enum.BabyState.Timeout then
         cls = require("BabyStorm.Domain.State.TimeoutState")
-    elseif state_id == Enum.BabyState.Riding then
-        cls = require("BabyStorm.Domain.State.RidingState")
     else
         cls = require("BabyStorm.Domain.State.StateBase")
     end
@@ -624,13 +681,6 @@ end
 ---@param data table|nil
 function BabyAgent:on_lifted_end(data)
     if self.destroyed or not self.unit or not self:is_in_state(Enum.BabyState.Carried) then
-        return
-    end
-
-    -- 开小车需求：玩家抱着宝宝上载具时引擎会强制放下宝宝（触发本回调），
-    -- 这里改为进入 Riding 状态——由我们把宝宝按帧粘在玩家头上，跟着玩家骑行。
-    if self.services.resolver and self.services.resolver:is_ride_need(self.current_need) then
-        self:enter_state(Enum.BabyState.Riding, { lift_unit = self.last_lift_unit, role = self.last_role }, true)
         return
     end
 
@@ -852,315 +902,6 @@ function BabyAgent:finish_satisfied(item)
     self:enter_idle()
 end
 
--- ===== 开小车需求：宝宝被玩家“挂”在头上，跟随玩家骑载具移动 =====
--- 玩家上载具会强制放下宝宝，所以这里不依赖引擎抱举，而是按帧 set_position
--- 把宝宝粘到玩家头部插槽；只有“玩家正在骑载具”时才推进倒计时。
-
----@return integer
-function BabyAgent:_ride_required_seconds()
-    local need = self.current_need
-    local min_seconds = (need and need.interact_min_seconds) or self.config.baby.ride_min_seconds or 15
-    local max_seconds = (need and need.interact_max_seconds) or self.config.baby.ride_max_seconds or min_seconds
-    return self:_random_seconds(min_seconds, max_seconds)
-end
-
----@return Vector3
-function BabyAgent:_ride_seat_offset()
-    local values = (self.current_need and self.current_need.ride_seat_offset) or self.config.baby.ride_seat_offset
-    if values then
-        return math.Vector3(values[1], values[2], values[3])
-    end
-    return math.Vector3(0.0, 1.2, 0.0)
-end
-
----@return Unit|false|nil
-function BabyAgent:_resolve_ride_vehicle()
-    if self._ride_vehicle_unit ~= nil then
-        return self._ride_vehicle_unit
-    end
-    local name = self.current_need and self.current_need.vehicle_name or nil
-    if name and LuaAPI.query_unit then
-        local ok, unit = pcall(function() return LuaAPI.query_unit(name) end)
-        self._ride_vehicle_unit = (ok and unit) or false
-    else
-        self._ride_vehicle_unit = false
-    end
-    return self._ride_vehicle_unit
-end
-
----@param carrier Unit|LifeEntity|nil
----@return boolean
-function BabyAgent:_carrier_driving(carrier)
-    if not carrier then
-        return false
-    end
-
-    -- 主判定：该 UGC 滑板不触发标准载具事件，也不在 get_driving_vehicle 里登记；
-    -- 但玩家坐上去后坐标与滑板几乎重合，因此用“玩家是否贴在滑板上”判断是否在骑行。
-    local vehicle = self:_resolve_ride_vehicle()
-    if vehicle and vehicle.get_position and carrier.get_position then
-        local vp = vehicle.get_position()
-        local cp = carrier.get_position()
-        if vp and cp then
-            local radius = self.config.baby.ride_mount_radius or 1.2
-            if UnitUtil.distance_sq(cp, vp) <= radius * radius then
-                return true
-            end
-        end
-    end
-
-    -- 兜底：标准载具事件 / get_driving_vehicle（对真·可骑乘载具有效）
-    if self.services.is_unit_driving then
-        return self.services.is_unit_driving(carrier) and true or false
-    end
-    return false
-end
-
----@return boolean
-function BabyAgent:is_riding_state()
-    return self:is_in_state(self.enum.BabyState.Riding)
-end
-
----玩家（抱起宝宝者）上了载具：开始把宝宝挂到头上骑行
----@param vehicle Vehicle|nil
-function BabyAgent:on_carrier_enter_vehicle(vehicle)
-    if self.destroyed or not self:is_riding_state() then
-        return
-    end
-    self.ride_driving = true
-    self.ride_vehicle = vehicle
-    self.ride_idle_elapsed = 0
-end
-
----玩家下了载具
-function BabyAgent:on_carrier_exit_vehicle()
-    if self.destroyed then
-        return
-    end
-    self.ride_driving = false
-    self.ride_vehicle = nil
-    self.ride_idle_elapsed = 0
-end
-
----@param context BabyStateContext|nil
-function BabyAgent:begin_ride(context)
-    if self.destroyed then
-        return
-    end
-
-    local carrier = (context and context.lift_unit) or self.last_lift_unit
-    self:set_busy(true)
-    self:cancel_patrol()
-    self:stop_movement()
-    self:set_lift_enabled(false)
-
-    self.ride_token = self.ride_token + 1
-    self.ride_elapsed = 0
-    self.ride_idle_elapsed = 0
-    self.ride_required = self:_ride_required_seconds()
-    self.ride_driving = false
-    self.ride_started = false
-    self.ride_carrier = carrier
-    self._ride_last_remain = nil
-
-    if not carrier then
-        self:enter_idle()
-        return
-    end
-
-    Log.info("baby", self.index, "ride wait carrier mount")
-    self:_ride_step(self.ride_token)
-end
-
----@param token integer
-function BabyAgent:_ride_step(token)
-    if self.destroyed or self.ride_token ~= token or not self:is_riding_state() then
-        return
-    end
-
-    -- 帧同步逻辑帧固定约 1/30s；按帧推进让跟随更顺滑
-    local dt = 0.0333
-    local carrier = self.ride_carrier
-    local driving = self.ride_driving or self:_carrier_driving(carrier)
-
-    if driving then
-        if not self.ride_started then
-            self.ride_started = true
-            self:cancel_need_countdown() -- 需求已匹配，停掉耐心倒计时
-            self:_set_baby_physics(false) -- 关闭宝宝物理：不受重力、不与人/车碰撞，做纯视觉乘客
-            self:_set_ride_collision(false) -- 双保险：再关一次成对碰撞
-            Log.info("baby", self.index, "ride start", self.ride_required)
-        end
-        self.ride_idle_elapsed = 0
-        self:_glue_to_ride_anchor(carrier)
-        self.ride_elapsed = self.ride_elapsed + dt
-        if self.ride_elapsed >= self.ride_required then
-            self:_complete_ride(carrier)
-            return
-        end
-        local remain = math.ceil(self.ride_required - self.ride_elapsed)
-        if remain ~= self._ride_last_remain then
-            self._ride_last_remain = remain
-            local text = (self.current_need and self.current_need.matched_text) or "开小车中"
-            self:set_status(text .. " " .. tostring(remain) .. "秒")
-        end
-    elseif not self.ride_started then
-        -- 还没骑车：等待玩家上载具；超时则当作普通放下
-        self.ride_idle_elapsed = self.ride_idle_elapsed + dt
-        if self.ride_idle_elapsed >= (self.config.baby.ride_confirm_seconds or 2.0) then
-            Log.info("baby", self.index, "ride canceled (no mount)")
-            self:enter_idle()
-            return
-        end
-        if self._ride_last_remain ~= -2 then
-            self._ride_last_remain = -2
-            self:set_status("带我去开小车~")
-        end
-    else
-        -- 骑过车但中途下来了：宝宝继续挂在头上，超时则放弃
-        self:_glue_to_ride_anchor(carrier)
-        self.ride_idle_elapsed = self.ride_idle_elapsed + dt
-        if self.ride_idle_elapsed >= (self.config.baby.ride_idle_grace or 5.0) then
-            Log.info("baby", self.index, "ride aborted (idle)")
-            self:_drop_near_carrier(carrier)
-            self:enter_idle()
-            return
-        end
-        if self._ride_last_remain ~= -1 then
-            self._ride_last_remain = -1
-            self:set_status("快开起来呀~")
-        end
-    end
-
-    if LuaAPI.call_delay_frame then
-        LuaAPI.call_delay_frame(1, function()
-            self:_ride_step(token)
-        end)
-    else
-        LuaAPI.call_delay_time(dt, function()
-            self:_ride_step(token)
-        end)
-    end
-end
-
----把宝宝粘到“骑行锚点”上：优先用载具（滑板）的变换——它随移动转向，朝向才正确；
----取不到载具时退回抱起者（玩家）。
----@param carrier Unit|LifeEntity|nil
-function BabyAgent:_glue_to_ride_anchor(carrier)
-    if not (self.unit and self.unit.set_position) then
-        return
-    end
-
-    local anchor = self:_resolve_ride_vehicle() or carrier
-    if not anchor then
-        return
-    end
-
-    local offset = self:_ride_seat_offset()
-    local pos = nil
-    if anchor.get_local_offset_position then
-        local ok, p = pcall(function() return anchor.get_local_offset_position(offset) end)
-        if ok and p then
-            pos = p
-        end
-    end
-    if not pos and anchor.get_position then
-        local cp = anchor.get_position()
-        if cp then
-            pos = math.Vector3(cp.x + offset.x, cp.y + offset.y, cp.z + offset.z)
-        end
-    end
-    if pos then
-        if self.unit.set_position_smooth then
-            pcall(function() self.unit.set_position_smooth(pos) end) -- 带渲染插值，跟随更顺滑
-        else
-            pcall(function() self.unit.set_position(pos) end)
-        end
-    end
-    if anchor.get_orientation then
-        local ok, rot = pcall(function() return anchor.get_orientation() end)
-        if ok and rot then
-            if self.unit.set_orientation_smooth then
-                pcall(function() self.unit.set_orientation_smooth(rot) end)
-            elseif self.unit.set_orientation then
-                pcall(function() self.unit.set_orientation(rot) end)
-            end
-        end
-    end
-end
-
----开关宝宝自身的物理（重力/碰撞）；骑行时关掉让它当纯视觉乘客
----@param active boolean
-function BabyAgent:_set_baby_physics(active)
-    if not self.unit then
-        return
-    end
-    if self.unit.set_physics_active then
-        pcall(function() self.unit.set_physics_active(active) end)
-    elseif self.unit.set_physic_enable then
-        pcall(function() self.unit.set_physic_enable(active) end)
-    end
-end
-
----开关宝宝与玩家、载具之间的碰撞
----@param enabled boolean
-function BabyAgent:_set_ride_collision(enabled)
-    if not (GameAPI and GameAPI.enable_collision_between_units and self.unit) then
-        return
-    end
-    if enabled == not self.ride_collision_disabled then
-        return -- 状态未变化
-    end
-
-    local others = {}
-    if self.ride_carrier then
-        others[#others + 1] = self.ride_carrier
-    end
-    local vehicle = self:_resolve_ride_vehicle()
-    if vehicle then
-        others[#others + 1] = vehicle
-    end
-    for index = 1, #others do
-        local other = others[index]
-        pcall(function() GameAPI.enable_collision_between_units(self.unit, other, enabled) end)
-    end
-    self.ride_collision_disabled = not enabled
-end
-
----离开骑行状态时的统一清理（由 RidingState:exit 调用）
-function BabyAgent:cleanup_ride()
-    self.ride_token = self.ride_token + 1
-    self.ride_driving = false
-    self.ride_started = false
-    self:_set_baby_physics(true) -- 恢复物理
-    if self.ride_collision_disabled then
-        self:_set_ride_collision(true) -- 恢复碰撞
-    end
-end
-
----@param carrier Unit|LifeEntity|nil
-function BabyAgent:_drop_near_carrier(carrier)
-    if not (carrier and carrier.get_position and self.unit and self.unit.set_position) then
-        return
-    end
-    local cp = carrier.get_position()
-    if cp then
-        pcall(function() self.unit.set_position(cp) end)
-    end
-end
-
----@param carrier Unit|LifeEntity|nil
-function BabyAgent:_complete_ride(carrier)
-    if self.destroyed then
-        return
-    end
-    self.ride_token = self.ride_token + 1 -- 终止骑行循环
-    self:cancel_need_countdown()
-    self:_drop_near_carrier(carrier)
-    Log.info("baby", self.index, "ride complete")
-    self:enter_state(Enum.BabyState.Satisfied, { ride = true }, true)
-end
-
 ---@return nil
 function BabyAgent:destroy()
     self.destroyed = true
@@ -1168,7 +909,6 @@ function BabyAgent:destroy()
     self:cancel_need_countdown()
     self.timeout_action_token = self.timeout_action_token + 1
     self.pickup_token = self.pickup_token + 1
-    self.ride_token = self.ride_token + 1
     self.pending_item = nil
     self.pending_purpose = nil
     self.is_rejecting = false
