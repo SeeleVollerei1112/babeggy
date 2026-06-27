@@ -23,6 +23,7 @@ local Prefab = require("Data.Prefab")
 ---@field need_timeout_max_seconds integer
 ---@field timeout_action_id integer
 ---@field timeout_action_seconds integer
+---@field timeout_reject_lift_chance_percent integer
 ---@field bubble_show_seconds Fixed
 ---@field reject_hold_delay Fixed
 ---@field reject_throw_delay Fixed
@@ -114,6 +115,7 @@ Config.baby = {
     need_timeout_max_seconds = 30,
     timeout_action_id = 23,
     timeout_action_seconds = 10,
+    timeout_reject_lift_chance_percent = 30,
     bubble_show_seconds = 999999.0,
     reject_hold_delay = 1.0,  -- 捡到错误物品后，拿在手上多久再丢出去（秒）；call_delay_time 需要 Fixed，必须写成小数
     reject_throw_delay = 2.0, -- 丢掉错误物品到表现不满意之间的间隔（秒）；call_delay_time 需要 Fixed，必须写成小数

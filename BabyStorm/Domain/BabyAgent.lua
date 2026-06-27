@@ -323,6 +323,10 @@ function BabyAgent:begin_timeout_action()
     if lifted then
         self.timeout_action_visual_cancelled = true
         self:_unlock_timeout_move_state()
+        if self:should_reject_timeout_lift() then
+            local rejected = self:reject_timeout_lift_attempt(self.last_lift_unit)
+            Log.info("baby", self.index, "reject carried timeout lift", rejected)
+        end
     else
         self:_lock_timeout_move_state()
         self:_play_timeout_action(duration)
@@ -522,8 +526,32 @@ function BabyAgent:cancel_timeout_action_visual()
     self:_stop_timeout_action_visual()
 end
 
--- 预留玩法函数（当前不调用）：主动拒绝本次 Timeout 抱起。
--- 未来可在 on_lifted_begin 中按概率调用，让抓举者立即放下宝宝。
+---@return boolean
+function BabyAgent:should_reject_timeout_lift()
+    local chance = self.config.baby.timeout_reject_lift_chance_percent or 0
+    if chance <= 0 then
+        return false
+    end
+    if chance >= 100 then
+        return true
+    end
+
+    local roll = 1
+    if GameAPI and GameAPI.random_int then
+        roll = GameAPI.random_int(1, 100)
+    else
+        local raw = LuaAPI.rand and LuaAPI.rand() or 0
+        if raw < 0 then
+            raw = -raw
+        end
+        roll = (raw % 100) + 1
+    end
+    Log.info("baby", self.index, "timeout reject lift roll", roll, "chance", chance)
+    return roll <= chance
+end
+
+-- 主动拒绝本次 Timeout 抱起。
+-- 由两个入口按概率调用：抱着进入 Timeout、Timeout 中新尝试抱起。
 ---@param lift_unit Unit|LifeEntity|nil
 ---@return boolean
 function BabyAgent:reject_timeout_lift_attempt(lift_unit)
@@ -798,6 +826,13 @@ function BabyAgent:on_lifted_begin(data)
     if self:is_in_state(Enum.BabyState.Timeout) then
         self.last_lift_unit = lift_unit
         self.last_role = role
+        if self:should_reject_timeout_lift() then
+            local rejected = self:reject_timeout_lift_attempt(lift_unit)
+            Log.info("baby", self.index, "reject timeout lift attempt", rejected)
+            if rejected then
+                return
+            end
+        end
         self:cancel_timeout_action_visual()
         self:_unlock_timeout_move_state()
         self:set_lift_enabled(true)
