@@ -83,6 +83,11 @@ function BabyAgentManager:start()
     item:set_need_resolver(resolver)
     local facility = FacilityService.New(self.config)
     facility:set_need_resolver(resolver)
+    facility:set_trigger_registry(self.triggers)
+    -- 宝宝也是 character，注入“是否宝宝”判定，让滑板碰撞检测能把宝宝从玩家里排除
+    facility:set_baby_unit_filter(function(unit)
+        return self:_find_agent_by_unit(unit) ~= nil
+    end)
     local game_view_model = GameViewModel.New()
     local score = ScoreService.New(self.config, sessions)
     local task = TaskEventService.New()

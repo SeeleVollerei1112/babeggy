@@ -1,11 +1,5 @@
 ---AUTTO EXPORT BY EGGITOR PLUGIN, PLEASE DO NOT EDIT
 
----@class PrefabData
----@field character table<string, integer>
----@field equipment table<string, integer>
----@field scene_eui table<string, integer>
-
----@type PrefabData
 return {
 	character = {
 		["宝宝蛋"] = 1073741937,
@@ -17,5 +11,9 @@ return {
 	},
 	scene_eui = {
 		reaction_bubble_canvas = 1073741895,
+	},
+	unit = {
+		["冬日序曲秋千"] = 1073807433,
+		["雪地滑板"] = 1073811571,
 	},
 }

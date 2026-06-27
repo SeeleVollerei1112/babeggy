@@ -51,7 +51,7 @@ local Prefab = require("Data.Prefab")
 ---@field contact_area_name string|nil
 ---@field contact_radius Fixed|nil
 ---@field facility_kind "swing"|"vehicle"|nil
----@field vehicle_drive_mode "kinematic"|"physics"|nil
+---@field vehicle_drive_mode "kinematic"|"physics"|"player_bound"|nil
 ---@field vehicle_speed Fixed|nil
 ---@field vehicle_seat_offset Fixed[]|nil
 ---@field vehicle_enter_delay Fixed|nil
@@ -62,6 +62,15 @@ local Prefab = require("Data.Prefab")
 ---@field vehicle_arrive_radius Fixed|nil
 ---@field vehicle_ride_anim_key integer|nil
 ---@field vehicle_ride_anim_id integer|nil
+---@field vehicle_onboard_radius Fixed|nil
+---@field vehicle_follow_offset Fixed[]|nil
+---@field vehicle_follow_rotation Fixed[]|nil
+---@field vehicle_passenger_model integer|nil
+---@field vehicle_passenger_socket string|nil
+---@field vehicle_passenger_offset Fixed[]|nil
+---@field vehicle_passenger_rotation Fixed[]|nil
+---@field vehicle_passenger_scale Fixed[]|nil
+---@field vehicle_passenger_drop_offset Fixed[]|nil
 ---@field action_text string
 ---@field need_text string
 ---@field matched_text string
@@ -183,7 +192,7 @@ Config.needs = {
         interact_min_seconds = 20,
         interact_max_seconds = 60,
         seat_offset = { 1, 1.2, 1 }, -- 临时可见偏移，验证绑定后改回真实座位偏移（原 { 1, -4, 1 } Y 为负会沉到地下）
-        seat_rotation = { 0, -90, 0 },
+        seat_rotation = { 0, -180, 0 },
         seat_anim_id = 21013,
     },
     {
@@ -194,23 +203,44 @@ Config.needs = {
         facility_name = "雪地滑板0", -- TODO: 改成场景里载具单位的实际名字
         area_name = "tutorial_area", -- TODO: 改成限定小车巡游范围的触发区名字（可与秋千区不同）
         contact_radius = 3.0, -- 仅控制滑板的 XZ 水平交互半径，不影响其他设施和物品
-        action_text = "开小车",
-        need_text = "想要开小车",
-        matched_text = "去开小车",
-        satisfied_text = "开够小车了",
+        action_text = "滑滑板",
+        need_text = "想要滑滑板",
+        matched_text = "去滑滑板",
+        satisfied_text = "滑完了",
         interact_begin_event = "BABY_VEHICLE_RIDE_BEGIN",
         interact_end_event = "BABY_VEHICLE_RIDE_END",
         interact_min_seconds = 20,
         interact_max_seconds = 40,
-        -- kinematic：用 set_position 挪车+粘宝宝，适配“雪地滑板”这类非可骑乘单位（默认，立即可用）
+        -- player_bound：玩家上板后，把滑板单位反向绑定到宝宝挂点上
+        --   引擎限制：只能把模型/单位挂到宝宝的挂点上，不能把宝宝绑到玩家/物体身上，
+        --   所以方向是「滑板 -> 宝宝 socket_origin」，再用偏移把滑板摆到宝宝头顶。
+        -- kinematic：用 set_position 挪车+粘宝宝，宝宝自己骑滑板在区域里巡游（当前采用）
         -- physics：try_enter_vehicle + VehicleComp 驱动，仅当该单位是真·可骑乘载具时才用
         vehicle_drive_mode = "kinematic",
-        vehicle_speed = 3.0,                 -- 运动学模式下的最大移动速度（单位/秒）
-        vehicle_seat_offset = { 0, 0.2, 0 }, -- 宝宝相对载具的座位偏移（让宝宝坐在车上方）
-        vehicle_reach_radius = 2.0,          -- 距目标多近算到达，然后换下一个随机点
-        vehicle_turn_speed = 3.0,            -- 转向角速度上限（弧度/秒）：越大转弯越快、越小越平缓
-        vehicle_accel = 6.0,                 -- 加/减速度（单位/秒²）：起步加速、到点/转弯缓停的快慢
-        vehicle_arrive_radius = 5.0,         -- 进入此半径开始线性减速，实现到点缓停
+        -- 轮询判定“玩家站在板上”的水平半径（单位）。板被骑时带着玩家一起跑，
+        -- 半径要小，只圈住真正站在板上的人、不误圈旁边路过的玩家。按板尺寸微调。
+        vehicle_onboard_radius = 1.0,
+        -- 跟随时宝宝相对玩家的位置/朝向偏移（上板期间宝宝与玩家/滑板的碰撞已关闭，不会顶歪板）。
+        -- vehicle_follow_offset：玩家“局部坐标系”下的偏移，会跟着玩家朝向走。Y 抬高、X/Z 侧移。
+        -- 朝向：宝宝直接同步“滑板本体”的完整朝向，跟着滑板一起倾斜（pitch/roll），贴在板上。
+        -- vehicle_follow_rotation：在滑板朝向上叠加的固定角度偏移(度, pitch/yaw/roll)，默认 {0,0,0}=和滑板一致。
+        vehicle_follow_offset = { 0, 1.0, 0 },
+        vehicle_follow_rotation = { 0, 0, 0 },
+        -- 玩家上板后宝宝跟随玩家滑行。装饰滑板模型（可选）：
+        --   填了 vehicle_passenger_model（滑板模型 UnitKey）就把它挂到宝宝身上当装饰；
+        --   留空则只跟随、不挂模型。绝不要绑“玩家正踩着的真机关”，否则会把板抢走、瞬间下板。
+        vehicle_passenger_model = nil,              -- TODO: 填装饰滑板模型 UnitKey；nil = 只跟随不挂模型
+        vehicle_passenger_socket = "socket_origin", -- 装饰滑板挂到宝宝的底面中心点挂点
+        vehicle_passenger_offset = { 0, 0, 0 },     -- 装饰滑板相对挂点的偏移（按模型微调）
+        vehicle_passenger_rotation = { 0, 0, 0 },   -- 装饰滑板朝向（角度，按需微调）
+        vehicle_passenger_scale = { 1, 1, 1 },      -- 装饰滑板缩放
+        vehicle_passenger_drop_offset = { 1.2, 0.2, 0 },
+        vehicle_speed = 3.0,                        -- 运动学模式下的最大移动速度（单位/秒）
+        vehicle_seat_offset = { 0, 0.2, 0 },        -- 宝宝相对载具的座位偏移（让宝宝坐在车上方）
+        vehicle_reach_radius = 2.0,                 -- 距目标多近算到达，然后换下一个随机点
+        vehicle_turn_speed = 3.0,                   -- 转向角速度上限（弧度/秒）：越大转弯越快、越小越平缓
+        vehicle_accel = 6.0,                        -- 加/减速度（单位/秒²）：起步加速、到点/转弯缓停的快慢
+        vehicle_arrive_radius = 5.0,                -- 进入此半径开始线性减速，实现到点缓停
         -- 骑行动作两条路（优先用 anim_key）：
         --   vehicle_ride_anim_key：AnimKey（座位动画那种大编号，如秋千 21013），走 force_play
         --     强制播放，能长期保持动态骑行姿势、不被待机顶掉（首选，需要从编辑器取到骑行 AnimKey）

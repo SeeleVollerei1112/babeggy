@@ -7,15 +7,25 @@ local TaskEvents = {}
 ---@field lift_unit Unit|nil
 ---@field item_id integer|nil
 ---@field need string|nil
+---@field need_type "item"|"facility"|nil
 ---@field amount integer|nil
 
 ---@type table<string, string>
 TaskEvents.EVENTS = {
-    LIFT_BABY = "TASK_LIFT_BABY",
-    NEED_MATCHED = "TASK_BABY_NEED_MATCHED",
-    BABY_PICK_ITEM = "TASK_BABY_PICK_ITEM",
-    BABY_SATISFIED = "TASK_BABY_SATISFIED",
-    WRONG_ITEM = "TASK_BABY_WRONG_ITEM", -- 不是宝宝想要的：放下宝宝时附近只有不对的物品
+    LIFT_BABY = "TASK_LIFT_BABY", -- 玩家举起宝宝蛋
+    LIFT_BABY_WANTS_ITEM = "TASK_LIFT_BABY_WANTS_ITEM", -- 举起的宝宝当前想要物品/食物
+    LIFT_BABY_WANTS_FACILITY = "TASK_LIFT_BABY_WANTS_FACILITY", -- 举起的宝宝当前想去设施玩
+    DELIVER_BABY_TO_ITEM = "TASK_DELIVER_BABY_TO_ITEM", -- 将宝宝带到想要的物品旁并放下
+    DELIVER_ITEM_TO_BABY = "TASK_DELIVER_ITEM_TO_BABY", -- 将宝宝想要的物品带到宝宝身边
+    DELIVER_BABY_TO_FACILITY = "TASK_DELIVER_BABY_TO_FACILITY", -- 将宝宝带到目标设施旁并放下
+    NEED_MATCHED = "TASK_BABY_NEED_MATCHED", -- 当前物品或设施与宝宝需求匹配
+    BABY_PICK_ITEM = "TASK_BABY_PICK_ITEM", -- 宝宝已经拾取物品
+    BABY_SATISFIED = "TASK_BABY_SATISFIED", -- 宝宝需求已满足（通用）
+    BABY_SATISFIED_ITEM = "TASK_BABY_SATISFIED_ITEM", -- 宝宝对物品/食物感到满意
+    BABY_SATISFIED_FACILITY = "TASK_BABY_SATISFIED_FACILITY", -- 宝宝完成设施游玩并感到满意
+    BABY_HAPPY = "TASK_BABY_HAPPY", -- 宝宝进入开心状态，可用于完成任务
+    WRONG_ITEM = "TASK_BABY_WRONG_ITEM", -- 宝宝确认拿到的不是想要的物品
+    NOT_WANTED_ITEM = "TASK_BABY_NOT_WANTED_ITEM", -- 错误物品反馈结束，可跳回重新配送任务
 }
 
 

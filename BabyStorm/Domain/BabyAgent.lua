@@ -12,6 +12,7 @@ local Log = require("Util.Log")
 ---@field role Role|nil
 ---@field reason string|nil
 ---@field suppress_lift_event boolean|nil
+---@field delivery_method "baby_to_item"|"item_to_baby"|"baby_to_facility"|nil
 
 ---@class BabyAgent
 ---@field index integer
@@ -462,7 +463,7 @@ function BabyAgent:_tick_timeout_action(token, remaining)
     -- 放下事件会立即再判一次，避免宝宝还在手里时切到寻物状态。
     if not self:_is_lifted_now() then
         local pos = self.unit and self.unit.get_position and self.unit.get_position()
-        if pos and self:try_match_current_need_at(pos) then
+        if pos and self:try_match_current_need_at(pos, "item_to_baby") then
             return
         end
     end
@@ -700,7 +701,7 @@ function BabyAgent:_scan_nearby_item(token)
     if not self.view_model:is_busy() then
         local pos = self.unit.get_position and self.unit.get_position()
         if pos then
-            if self:try_match_current_need_at(pos) then
+            if self:try_match_current_need_at(pos, "item_to_baby") then
                 return
             end
         end
@@ -861,7 +862,7 @@ function BabyAgent:on_lifted_end(data)
     if self:is_in_state(Enum.BabyState.Timeout) then
         self.last_lift_unit = nil
         self.last_role = nil
-        if pos and self:try_match_current_need_at(pos) then
+        if pos and self:try_match_current_need_at(pos, "baby_drop") then
             return
         end
         self:resume_timeout_action_visual()
@@ -879,7 +880,7 @@ function BabyAgent:on_lifted_end(data)
         return
     end
 
-    if self:try_match_current_need_at(pos) then
+    if self:try_match_current_need_at(pos, "baby_drop") then
         return
     end
 
@@ -887,7 +888,11 @@ function BabyAgent:on_lifted_end(data)
     if wrong then
         -- 不是宝宝想要的：先捡到手上，之后再丢掉并表示不满意
         self:cancel_movement_hold()
-        self:enter_state(Enum.BabyState.SeekingItem, { item = wrong, reason = "wrong_item" }, true)
+        self:enter_state(Enum.BabyState.SeekingItem, {
+            item = wrong,
+            reason = "wrong_item",
+            delivery_method = "baby_to_item",
+        }, true)
     else
         self:hold_movement(self.config.baby.drop_move_hold_seconds)
         self:enter_idle()
@@ -895,19 +900,34 @@ function BabyAgent:on_lifted_end(data)
 end
 
 ---@param pos Vector3
+---@param source "baby_drop"|"item_to_baby"|nil
 ---@return boolean
-function BabyAgent:try_match_current_need_at(pos)
-    local facility = self:find_match_for_current_need(pos)
+function BabyAgent:try_match_current_need_at(pos, source)
+    -- 设施需求只能由玩家抱着宝宝到目标处并放下触发。
+    -- 空闲扫描只处理地面物品，避免宝宝自己走近设施导致任务事件不匹配。
+    local facility = source == "baby_drop" and self:find_match_for_current_need(pos) or nil
     if facility then
         self:cancel_movement_hold()
-        self:enter_state(Enum.BabyState.InteractingFacility, { facility = facility }, true)
+        self:enter_state(Enum.BabyState.InteractingFacility, {
+            facility = facility,
+            delivery_method = source == "baby_drop" and "baby_to_facility" or nil,
+        }, true)
         return true
     end
 
     local item = self.services.item:nearest_match(pos, self.current_need)
     if item then
         self:cancel_movement_hold()
-        self:enter_state(Enum.BabyState.SeekingItem, { item = item }, true)
+        local delivery_method = nil
+        if source == "baby_drop" then
+            delivery_method = "baby_to_item"
+        elseif source == "item_to_baby" then
+            delivery_method = "item_to_baby"
+        end
+        self:enter_state(Enum.BabyState.SeekingItem, {
+            item = item,
+            delivery_method = delivery_method,
+        }, true)
         return true
     end
     return false
@@ -1018,7 +1038,11 @@ function BabyAgent:complete_item_obtained(item, count)
     self:select_equipped_slot()
     self.services.item:remove(item)
     self:cancel_need_countdown()
-    self.services.task:emit_baby_pick_item(self, item, count or 1)
+    LuaAPI.call_delay_time(1.5, function()
+        if not self.destroyed then
+            self.services.task:emit_baby_pick_item(self, item, count or 1)
+        end
+    end)
     self:enter_state(Enum.BabyState.Satisfied, { item = item }, true)
 end
 
@@ -1038,6 +1062,11 @@ function BabyAgent:reject_wrong_item(item)
     self:set_lift_enabled(false)
     self:stop_movement()
     self:select_equipped_slot()
+    LuaAPI.call_delay_time(1.5, function()
+        if not self.destroyed and self.is_rejecting then
+            self.services.task:emit_baby_pick_item(self, item, 1)
+        end
+    end)
     -- 先拿在手上看一会儿（气泡：疑惑）
     self:set_status("咦？不是这个…")
 

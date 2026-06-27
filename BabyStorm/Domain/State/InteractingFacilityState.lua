@@ -23,7 +23,7 @@ function InteractingFacilityState:enter(context)
     agent:set_lift_enabled(false)
     agent:stop_movement()
     agent:set_status(agent.services.resolver:get_match_text(agent.current_need, facility))
-    agent.services.task:emit_need_matched(agent, facility)
+    agent.services.task:emit_delivery(agent, facility, context and context.delivery_method or nil)
 
     local duration = agent.services.facility:begin_interaction(agent, facility)
     if not duration then
@@ -35,6 +35,12 @@ function InteractingFacilityState:enter(context)
     -- 会被需求超时（20~30s）打断，触发 Timeout 并刷新成另一个需求。
     agent:cancel_need_countdown()
 
+    -- 滑板由玩家的组件交互驱动，宝宝在此等待玩家上板。
+    if agent.services.facility:is_player_bound(facility) then
+        agent:set_status("等待玩家上滑板")
+        return
+    end
+
     LuaAPI.call_delay_time(duration, function()
         if agent:is_in_state(agent.enum.BabyState.InteractingFacility) then
             agent:complete_facility_interaction(facility)
@@ -43,4 +49,3 @@ function InteractingFacilityState:enter(context)
 end
 
 return InteractingFacilityState
-

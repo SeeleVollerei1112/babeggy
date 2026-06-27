@@ -9,12 +9,16 @@ local Log = require("Util.Log")
 ---@field contact_area Unit|nil
 ---@field active_agent BabyAgent|nil
 ---@field bind_id any
+---@field rider Unit|LifeEntity|nil
 ---@field seat_token integer|nil
+---@field onboard_streak integer|nil
+---@field offboard_streak integer|nil
 ---@field drive { heading: Fixed, speed: Fixed, target: Vector3|nil }|nil
 
 ---@class FacilityService
 ---@field config BabyStormConfig
 ---@field resolver NeedResolver|nil
+---@field trigger_registry TriggerRegistry|nil
 ---@field facilities BabyFacilityRecord[]
 ---@field seat_token integer|nil
 local FacilityService = Class("FacilityService")
@@ -23,13 +27,26 @@ local FacilityService = Class("FacilityService")
 function FacilityService:Ctor(config)
     self.config = config
     self.resolver = nil
+    self.trigger_registry = nil
     self.facilities = {}
     self.seat_token = 0
+    self.is_baby_unit = nil
 end
 
 ---@param resolver NeedResolver
 function FacilityService:set_need_resolver(resolver)
     self.resolver = resolver
+end
+
+---@param registry TriggerRegistry
+function FacilityService:set_trigger_registry(registry)
+    self.trigger_registry = registry
+end
+
+---注入“是否宝宝单位”判定。宝宝也是 character，必须靠它把宝宝从“踩板玩家”里排除掉。
+---@param fn fun(unit:Unit|LifeEntity|nil):boolean
+function FacilityService:set_baby_unit_filter(fn)
+    self.is_baby_unit = fn
 end
 
 ---@return nil
@@ -71,6 +88,240 @@ function FacilityService:_register_facility(need)
     }
     self.facilities[#self.facilities + 1] = facility
     return facility
+end
+
+---@param facility BabyFacilityRecord|nil
+---@return boolean
+function FacilityService:is_player_bound(facility)
+    return facility ~= nil and facility.def ~= nil
+        and facility.def.facility_kind == "vehicle"
+        and facility.def.vehicle_drive_mode == "player_bound"
+end
+
+-- ===== player_bound 检测：轮询“谁站在板上” =====
+-- 滑板是“机关”，没有互动按钮、也不是载具，碰撞事件又是瞬时的（蹭一下就 begin+end），
+-- 都无法表达“玩家正站在板上”这个持续状态。玩法是“站到板上、板载着玩家跑”，所以改成轮询：
+-- 板被骑时会带着玩家一起移动，真正的骑手会持续贴在板上，旁观者会被甩开。
+-- 因此判定 = 持续（去抖）有非宝宝角色贴在板的水平范围内；持续离开才算下板。
+local PLAYER_BOUND_DT = 0.0166 -- ~60Hz：跟随/朝向逼近的步子更细腻，配合 smooth 接口不卡顿
+local ON_BOARD_TICKS = 12 -- 连续约 0.2s 贴在板上才确认上板（滤掉路过蹭碰）
+local OFF_BOARD_TICKS = 18 -- 连续约 0.3s 离开板才确认下板（滤掉跳跃/抖动瞬间脱离）
+
+---找出“正站在板上”的非宝宝角色：水平距离贴近板本体（板会移动，按板当前位置算）。
+---@param facility BabyFacilityRecord
+---@return Unit|LifeEntity|nil
+function FacilityService:_find_player_on_board(facility)
+    local board = facility.unit
+    local bpos = board and board.get_position and board.get_position()
+    if not (bpos and GameAPI.get_all_characters) then
+        return nil
+    end
+    local radius = facility.def.vehicle_onboard_radius or 1.0
+    local r2 = radius * radius
+    local ok, list = pcall(function() return GameAPI.get_all_characters() end)
+    if not (ok and list) then
+        return nil
+    end
+
+    local best, best_dist = nil, nil
+    for index = 1, #list do
+        local char = list[index]
+        local is_baby = self.is_baby_unit ~= nil and self.is_baby_unit(char) or false
+        if char and not is_baby and char.get_position then
+            local cpos = char.get_position()
+            if cpos then
+                local dist = UnitUtil.distance_xz_sq(cpos, bpos)
+                if dist <= r2 and (not best_dist or dist < best_dist) then
+                    best, best_dist = char, dist
+                end
+            end
+        end
+    end
+    return best
+end
+
+---每帧轮询：等待上板 / 跟随 / 判定下板。token 失效（下板或换人）即自动停止。
+---@param agent BabyAgent
+---@param facility BabyFacilityRecord
+---@param token integer
+function FacilityService:_player_bound_tick(agent, facility, token)
+    if agent.destroyed or facility.active_agent ~= agent or facility.seat_token ~= token then
+        return
+    end
+
+    local on_board = self:_find_player_on_board(facility)
+
+    if facility.rider then
+        -- 已上板：跟随玩家，并判断当初那个玩家是否还在板上
+        local still = on_board ~= nil and UnitUtil.same_unit(on_board, facility.rider)
+        facility.offboard_streak = still and 0 or ((facility.offboard_streak or 0) + 1)
+        self:_snap_baby_to_rider(agent, facility)
+        if (facility.offboard_streak or 0) >= OFF_BOARD_TICKS then
+            agent:complete_facility_interaction(facility)
+            return
+        end
+    else
+        -- 等待上板：连续 ON_BOARD_TICKS 拍都有玩家贴在板上才确认
+        if on_board then
+            facility.onboard_streak = (facility.onboard_streak or 0) + 1
+            if (facility.onboard_streak or 0) >= ON_BOARD_TICKS then
+                self:_attach_player_bound_passenger(facility, on_board)
+            end
+        else
+            facility.onboard_streak = 0
+        end
+    end
+
+    LuaAPI.call_delay_time(PLAYER_BOUND_DT, function()
+        self:_player_bound_tick(agent, facility, token)
+    end)
+end
+
+---把宝宝跟随到玩家身上（含跳跃高度），按配置抬高/侧移；位置走平滑接口、朝向走可调转速逼近。
+---每帧由 _player_bound_tick 调用。
+---@param agent BabyAgent
+---@param facility BabyFacilityRecord
+function FacilityService:_snap_baby_to_rider(agent, facility)
+    local rider = facility.rider
+    if not (rider and agent.unit) then
+        return
+    end
+    local def = facility.def
+
+    -- 位置：优先用玩家“局部坐标系偏移”（抬高/侧移会随玩家朝向走），退化为玩家世界坐标。
+    -- 用 set_position_smooth 让引擎在两次更新间插值，跟随不一卡一卡。
+    local offset = self:_to_vector3(def.vehicle_follow_offset)
+    local pos = nil
+    if offset and rider.get_local_offset_position then
+        local ok, p = pcall(function() return rider.get_local_offset_position(offset) end)
+        if ok and p then
+            pos = p
+        end
+    end
+    if not pos and rider.get_position then
+        pos = rider.get_position()
+    end
+    if pos then
+        if agent.unit.set_position_smooth then
+            pcall(function() agent.unit.set_position_smooth(pos) end)
+        elseif agent.unit.set_position then
+            pcall(function() agent.unit.set_position(pos) end)
+        end
+    end
+
+    -- 朝向：跟随玩家
+    self:_follow_rider_orientation(agent, facility)
+end
+
+---朝向跟随：直接同步“滑板本体”的完整朝向（含 pitch/roll），让宝宝和滑板一起倾斜、贴在板上。
+---参考滑板而非玩家：玩家身上还叠了转身/动作的倾，照搬会失真；滑板本体的朝向才是板真实的倾。
+---用 set_orientation_smooth 让引擎在逻辑帧之间插值，和 set_position_smooth 一致 → 跟随节奏统一、不卡。
+---@param agent BabyAgent
+---@param facility BabyFacilityRecord
+function FacilityService:_follow_rider_orientation(agent, facility)
+    local board = facility.unit
+    if not (board and board.get_orientation and agent.unit) then
+        return
+    end
+    local ok, rot = pcall(function() return board.get_orientation() end)
+    if not (ok and rot) then
+        return
+    end
+
+    -- 可选：在滑板朝向基础上叠加固定角度偏移（局部右乘），默认 {0,0,0} = 和滑板朝向完全一致
+    local off = self:_to_quaternion(facility.def.vehicle_follow_rotation)
+    if off then
+        local mok, composed = pcall(function() return rot * off end)
+        if mok and composed then
+            rot = composed
+        end
+    end
+
+    if agent.unit.set_orientation_smooth then
+        pcall(function() agent.unit.set_orientation_smooth(rot) end)
+    elseif agent.unit.set_orientation then
+        pcall(function() agent.unit.set_orientation(rot) end)
+    end
+end
+
+---确认上板：记录骑手、切状态、挂可选的装饰滑板。跟随由轮询循环负责，这里不再起循环。
+---@param facility BabyFacilityRecord
+---@param rider Unit|LifeEntity
+function FacilityService:_attach_player_bound_passenger(facility, rider)
+    local agent = facility.active_agent
+    if not (agent and agent.unit) or facility.rider then
+        return
+    end
+
+    facility.rider = rider
+    facility.offboard_streak = 0
+    agent:set_status("跟玩家滑行中")
+    Log.info("player boarded skateboard", facility.def.id, "baby", agent.index)
+
+    -- 关掉宝宝与玩家/滑板之间的碰撞：否则宝宝被硬贴到玩家位置会和玩家“卡住”，把板顶歪、
+    -- 还会让宝宝因受力做出踉跄等动作。下板时再恢复。
+    self:_set_player_bound_collision(agent, facility, false)
+
+    -- 引擎限制：只能把模型挂到宝宝挂点上，不能把宝宝绑到玩家/物体身上；也绝不能绑“玩家正
+    -- 踩着的真机关板”（会把板从玩家脚下抢走）。所以只绑可选的“装饰滑板模型”，没配就只跟随。
+    self:_attach_decoration_model(agent, facility)
+end
+
+---开/关宝宝与“当前骑手 + 滑板本体”之间的碰撞。上板时关、下板时开。
+---@param agent BabyAgent|nil
+---@param facility BabyFacilityRecord
+---@param enable boolean
+function FacilityService:_set_player_bound_collision(agent, facility, enable)
+    if not (agent and agent.unit and GameAPI.enable_collision_between_units) then
+        return
+    end
+    local targets = { facility.rider, facility.unit }
+    for index = 1, #targets do
+        local other = targets[index]
+        if other then
+            pcall(function()
+                GameAPI.enable_collision_between_units(agent.unit, other, enable)
+            end)
+        end
+    end
+end
+
+---给宝宝挂一个装饰滑板模型（可选）。用 bind_model(模型UnitKey)，不碰玩家正踩的真机关。
+---@param agent BabyAgent
+---@param facility BabyFacilityRecord
+function FacilityService:_attach_decoration_model(agent, facility)
+    local def = facility.def
+    local model_id = def.vehicle_passenger_model
+    if not (model_id and agent.unit and agent.unit.bind_model) then
+        return
+    end
+    local socket_name = def.vehicle_passenger_socket or "socket_origin"
+    local socket = Enums.ModelSocket[socket_name] or Enums.ModelSocket.socket_origin
+    local offset = self:_to_vector3(def.vehicle_passenger_offset)
+    local rotation = self:_to_quaternion(def.vehicle_passenger_rotation)
+    local scale = self:_to_vector3(def.vehicle_passenger_scale)
+    local ok, bind_id = pcall(function()
+        return agent.unit.bind_model(model_id, socket, offset, rotation, scale)
+    end)
+    if ok and bind_id then
+        facility.bind_id = bind_id
+        Log.info("deco skateboard bound onto baby", def.id, "baby", agent.index, "bind", bind_id)
+    else
+        Log.warn("failed to bind deco skateboard", def.id, agent.index, "ok", ok, "bind", bind_id)
+    end
+end
+
+---@param agent BabyAgent|nil
+---@param facility BabyFacilityRecord
+function FacilityService:_detach_player_bound_passenger(agent, facility)
+    -- 先恢复碰撞（此时 facility.rider 还在，能正确还原与玩家的碰撞）
+    self:_set_player_bound_collision(agent, facility, true)
+    -- 绑定挂在宝宝身上，解绑也调用宝宝单位的 unbind_model
+    if agent and agent.unit and facility.bind_id and agent.unit.unbind_model then
+        pcall(function() agent.unit.unbind_model(facility.bind_id) end)
+    end
+    facility.bind_id = nil
+    facility.rider = nil
 end
 
 ---@param unit Unit|nil
@@ -322,7 +573,16 @@ function FacilityService:_begin_vehicle_ride(agent, facility, duration)
     local token = facility.seat_token
     local mode = self:_vehicle_mode(facility)
 
-    if mode == "physics" then
+    if mode == "player_bound" then
+        -- 锁住宝宝的 AI/移动，让它在板边等玩家；随后每帧轮询“谁站在板上”。
+        if agent.lock_ride_move_state then
+            agent:lock_ride_move_state()
+        end
+        facility.rider = nil
+        facility.onboard_streak = 0
+        facility.offboard_streak = 0
+        self:_player_bound_tick(agent, facility, token)
+    elseif mode == "physics" then
         -- 真·载具：宝宝上车，由 VehicleComp 物理驱动（要求该单位是可骑乘载具）
         if agent.unit.try_enter_vehicle then
             pcall(function() agent.unit.try_enter_vehicle(vehicle) end)
@@ -614,7 +874,10 @@ function FacilityService:_end_vehicle_ride(agent, facility)
         agent:unlock_ride_move_state() -- 解除骑行移动锁，恢复 AI/移动
     end
     local vehicle = facility.unit
-    if self:_vehicle_mode(facility) == "physics" then
+    local mode = self:_vehicle_mode(facility)
+    if mode == "player_bound" then
+        self:_detach_player_bound_passenger(agent, facility)
+    elseif mode == "physics" then
         self:_stop_vehicle(vehicle)
         if agent.unit and agent.unit.try_exit_vehicle then
             pcall(function() agent.unit.try_exit_vehicle() end)
@@ -744,12 +1007,20 @@ end
 
 ---@return nil
 function FacilityService:destroy()
-    -- 停掉仍在巡游的载具，避免地图销毁后载具继续移动
+    -- 清理仍在运行的设施互动和绑定模型。
     for index = 1, #self.facilities do
         local facility = self.facilities[index]
         if self:_is_vehicle(facility) then
             facility.seat_token = nil
-            self:_stop_vehicle(facility.unit)
+            if self:is_player_bound(facility) then
+                local agent = facility.active_agent
+                self:_detach_player_bound_passenger(agent, facility)
+                if agent and agent.unlock_ride_move_state then
+                    agent:unlock_ride_move_state()
+                end
+            else
+                self:_stop_vehicle(facility.unit)
+            end
         end
     end
     self.facilities = {}
