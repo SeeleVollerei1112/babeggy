@@ -11,8 +11,10 @@ local Prefab = require("Data.Prefab")
 ---@field patrol_interval Fixed
 ---@field patrol_threshold Fixed
 ---@field ai_move_threshold Fixed
----@field pickup_radius Fixed
+---@field contact_radius Fixed
+---@field item_pickup_radius Fixed
 ---@field item_scan_interval Fixed
+---@field drop_move_hold_seconds Fixed
 ---@field pickup_check_interval Fixed
 ---@field pickup_timeout Fixed
 ---@field pickup_move_speed_ratio Fixed
@@ -45,6 +47,8 @@ local Prefab = require("Data.Prefab")
 ---@field facility_id string|nil
 ---@field facility_name string|nil
 ---@field area_name string|nil
+---@field contact_area_name string|nil
+---@field contact_radius Fixed|nil
 ---@field facility_kind "swing"|"vehicle"|nil
 ---@field vehicle_drive_mode "kinematic"|"physics"|nil
 ---@field vehicle_speed Fixed|nil
@@ -96,8 +100,12 @@ Config.baby = {
     patrol_interval = 4.0,
     patrol_threshold = 4.0,
     ai_move_threshold = 0.5,
-    pickup_radius = 4.0,
+    -- 设施接触和物品强制拾取兜底距离；不要与设施巡游区域混用。
+    contact_radius = 1.5,
+    -- 物品允许在稍远处触发 AI 走近拾取；设施仍只使用 contact_radius。
+    item_pickup_radius = 3.0,
     item_scan_interval = 0.5, -- 空闲/巡逻时多久就近扫描一次当前需求的物品（秒，必须小数）
+    drop_move_hold_seconds = 1.0,
     pickup_check_interval = 0.25,
     pickup_timeout = 5.0,
     pickup_move_speed_ratio = 2.0,
@@ -132,7 +140,7 @@ Config.needs = {
         resolver = "equipment",
         item_key = (Prefab.equipment and Prefab.equipment["草莓奶昔_自定义"]) or 1073774699,
         item_name = "草莓奶昔",
-        action_text = "喝奶昔",
+        action_text = "奶昔",
         need_text = "想要喝奶昔",
         matched_text = "去喝奶昔",
         satisfied_text = "喝到奶昔了",
@@ -142,7 +150,7 @@ Config.needs = {
         resolver = "equipment",
         item_key = (Prefab.equipment and Prefab.equipment["冰激凌_自定义"]) or 1073786889,
         item_name = "冰淇淋",
-        action_text = "吃冰淇淋",
+        action_text = "冰淇淋",
         need_text = "想要吃冰淇淋",
         matched_text = "去吃冰淇淋",
         satisfied_text = "吃到冰淇淋了",
@@ -152,7 +160,7 @@ Config.needs = {
         resolver = "equipment",
         item_key = (Prefab.equipment and Prefab.equipment["提拉米苏_自定义"]) or 1073795131,
         item_name = "提拉米苏",
-        action_text = "吃蛋糕",
+        action_text = "蛋糕",
         need_text = "想要吃蛋糕",
         matched_text = "去吃蛋糕",
         satisfied_text = "吃到蛋糕了",
@@ -163,6 +171,7 @@ Config.needs = {
         facility_id = "winter_swing",
         facility_name = "冬日序曲秋千0",
         area_name = "通用触发区域0",
+        contact_area_name = "通用触发区域0",
         action_text = "荡秋千",
         need_text = "想要荡秋千",
         matched_text = "去荡秋千",
@@ -182,6 +191,7 @@ Config.needs = {
         facility_id = "baby_car",
         facility_name = "雪地滑板0", -- TODO: 改成场景里载具单位的实际名字
         area_name = "tutorial_area", -- TODO: 改成限定小车巡游范围的触发区名字（可与秋千区不同）
+        contact_radius = 3.0, -- 仅控制滑板的 XZ 水平交互半径，不影响其他设施和物品
         action_text = "开小车",
         need_text = "想要开小车",
         matched_text = "去开小车",
@@ -194,7 +204,7 @@ Config.needs = {
         -- physics：try_enter_vehicle + VehicleComp 驱动，仅当该单位是真·可骑乘载具时才用
         vehicle_drive_mode = "kinematic",
         vehicle_speed = 3.0,                 -- 运动学模式下的最大移动速度（单位/秒）
-        vehicle_seat_offset = { 0, 0.5, 0 }, -- 宝宝相对载具的座位偏移（让宝宝坐在车上方）
+        vehicle_seat_offset = { 0, 0.2, 0 }, -- 宝宝相对载具的座位偏移（让宝宝坐在车上方）
         vehicle_reach_radius = 2.0,          -- 距目标多近算到达，然后换下一个随机点
         vehicle_turn_speed = 3.0,            -- 转向角速度上限（弧度/秒）：越大转弯越快、越小越平缓
         vehicle_accel = 6.0,                 -- 加/减速度（单位/秒²）：起步加速、到点/转弯缓停的快慢

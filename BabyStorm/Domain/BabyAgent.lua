@@ -11,6 +11,7 @@ local Log = require("Util.Log")
 ---@field lift_unit Unit|nil
 ---@field role Role|nil
 ---@field reason string|nil
+---@field suppress_lift_event boolean|nil
 
 ---@class BabyAgent
 ---@field index integer
@@ -29,11 +30,16 @@ local Log = require("Util.Log")
 ---@field pending_purpose "satisfy"|"reject"|nil
 ---@field is_rejecting boolean
 ---@field patrol_token integer
+---@field movement_hold_token integer
+---@field movement_held boolean
+---@field movement_hold_locked boolean
 ---@field pickup_token integer
 ---@field need_timer_token integer
 ---@field timeout_action_token integer
 ---@field need_countdown_remaining integer|nil
 ---@field timeout_action_anchor_pos Vector3|nil
+---@field timeout_action_visual_cancelled boolean
+---@field timeout_action_remaining integer|nil
 ---@field timeout_move_locked boolean
 ---@field need_timeout_bonus_seconds integer
 ---@field timeout_action_bonus_seconds integer
@@ -62,11 +68,16 @@ function BabyAgent:Ctor(index, unit, services, config)
     self.pending_purpose = nil
     self.is_rejecting = false
     self.patrol_token = 0
+    self.movement_hold_token = 0
+    self.movement_held = false
+    self.movement_hold_locked = false
     self.pickup_token = 0
     self.need_timer_token = 0
     self.timeout_action_token = 0
     self.need_countdown_remaining = nil
     self.timeout_action_anchor_pos = nil
+    self.timeout_action_visual_cancelled = false
+    self.timeout_action_remaining = nil
     self.timeout_move_locked = false
     self.ride_move_locked = false
     self.need_timeout_bonus_seconds = 0
@@ -255,9 +266,9 @@ function BabyAgent:_tick_need_countdown(token, remaining)
         return
     end
 
-    -- 计时持续推进，但只有在 Idle（正在展示需求）时才刷新气泡，
-    -- 否则会把“被抱起 / 去荡秋千 / 捡起来看看”等状态气泡每秒覆盖回“想要…X秒”。
-    if self:is_in_state(self.enum.BabyState.Idle) then
+    -- Idle 与 Carried 都持续展示需求倒计时；其他忙碌状态保留各自的表现文案。
+    if self:is_in_state(self.enum.BabyState.Idle)
+        or self:is_in_state(self.enum.BabyState.Carried) then
         self:set_status(self:_format_need_countdown(remaining))
     end
     LuaAPI.call_delay_time(1.0, function()
@@ -283,10 +294,19 @@ function BabyAgent:begin_timeout_action()
     self.timeout_action_token = self.timeout_action_token + 1
     local token = self.timeout_action_token
     local duration = self:get_timeout_action_seconds()
+    self.timeout_action_visual_cancelled = false
+    self.timeout_action_remaining = duration
+    local lifted = self:_is_lifted_now()
     Log.info("baby", self.index, "timeout action", duration)
 
     self:set_busy(true)
-    self:_prepare_timeout_action_pose()
+    if lifted then
+        -- 已经处于被举起姿势时，只停止旧巡逻回调；stop_movement / 选装备槽都会
+        -- 让引擎把被举起动作刷新成站立，因此地面动作准备必须完全跳过。
+        self:cancel_patrol()
+    else
+        self:_prepare_timeout_action_pose()
+    end
     self.pending_item = nil
     self.pending_purpose = nil
     self.is_rejecting = false
@@ -298,30 +318,22 @@ function BabyAgent:begin_timeout_action()
     end
 
     self.view_model:add_stress(1)
-    self:_wait_timeout_release_then_play(token, duration, 0)
+    -- Timeout 是行为状态，抱起只取消其动作表现，不结束倒计时或刷新需求。
+    self:set_lift_enabled(true)
+    if lifted then
+        self.timeout_action_visual_cancelled = true
+        self:_unlock_timeout_move_state()
+    else
+        self:_lock_timeout_move_state()
+        self:_play_timeout_action(duration)
+    end
+    self:_tick_timeout_action(token, duration)
 end
 
 function BabyAgent:_prepare_timeout_action_pose()
     self:cancel_patrol()
-    self:_release_lift_for_timeout()
     self:stop_movement()
-    self:_lock_timeout_move_state()
     self:select_equipped_slot()
-end
-
-function BabyAgent:_release_lift_for_timeout()
-    local lift_unit = self.last_lift_unit
-    if lift_unit then
-        if lift_unit.lift then
-            pcall(function() lift_unit.lift() end)
-        end
-        if lift_unit.cmd_lift then
-            pcall(function() lift_unit.cmd_lift() end)
-        end
-        if lift_unit.ai_command_lift then
-            pcall(function() lift_unit.ai_command_lift() end)
-        end
-    end
 end
 
 ---@return boolean
@@ -335,36 +347,9 @@ function BabyAgent:_is_lifted_now()
     return false
 end
 
----@param token integer
----@param duration integer
----@param attempts integer
-function BabyAgent:_wait_timeout_release_then_play(token, duration, attempts)
-    if self.destroyed or self.timeout_action_token ~= token or not self:is_in_state(self.enum.BabyState.Timeout) then
-        return
-    end
-
-    if self:_is_lifted_now() and attempts < 12 then
-        Log.info("baby", self.index, "wait lift release", attempts)
-        self:_release_lift_for_timeout()
-        LuaAPI.call_delay_time(0.1, function()
-            self:_wait_timeout_release_then_play(token, duration, attempts + 1)
-        end)
-        return
-    end
-
-    Log.info("baby", self.index, "lift released", not self:_is_lifted_now())
-    self.last_lift_unit = nil
-    self:set_lift_enabled(false)
-    self:stop_movement()
-    self:_lock_timeout_move_state()
-    self:_play_timeout_action(duration)
-    self:_tick_timeout_action(token, duration)
-end
 
 function BabyAgent:_lock_timeout_move_state()
-    -- 本方法在一次超时流程中会被调用两次（_prepare_timeout_action_pose 与
-    -- _wait_timeout_release_then_play）。BUFF_FORBID_MOVE 是计数型 buff，
-    -- 加两次只移除一次会导致宝宝永久无法移动，因此这里做幂等保护：只加一次。
+    -- BUFF_FORBID_MOVE 是计数型 buff，必须幂等，避免只移除一次后永久无法移动。
     if not self.timeout_move_locked then
         if self.unit and self.unit.add_state then
             pcall(function()
@@ -462,8 +447,20 @@ end
 ---@param token integer
 ---@param remaining integer
 function BabyAgent:_tick_timeout_action(token, remaining)
-    if self.destroyed or self.timeout_action_token ~= token then
+    if self.destroyed or self.timeout_action_token ~= token
+        or not self:is_in_state(self.enum.BabyState.Timeout) then
         return
+    end
+
+    self.timeout_action_remaining = remaining
+
+    -- 补救窗口：Timeout 行为结束前仍持续判断当前需求。抱起过程中不启动 AI，
+    -- 放下事件会立即再判一次，避免宝宝还在手里时切到寻物状态。
+    if not self:_is_lifted_now() then
+        local pos = self.unit and self.unit.get_position and self.unit.get_position()
+        if pos and self:try_match_current_need_at(pos) then
+            return
+        end
     end
 
     if remaining <= 0 then
@@ -474,7 +471,9 @@ function BabyAgent:_tick_timeout_action(token, remaining)
     self:set_status("没满足！" .. tostring(remaining) .. "秒")
     -- 全身动作（如 23）单次播放约 1 秒后会被待机动画顶掉，这里每秒重发一次，
     -- 让“没满足”动作在整段超时时间内持续表现。
-    self:_refresh_timeout_anim(remaining)
+    if not self.timeout_action_visual_cancelled then
+        self:_refresh_timeout_anim(remaining)
+    end
     LuaAPI.call_delay_time(1.0, function()
         self:_tick_timeout_action(token, remaining - 1)
     end)
@@ -491,17 +490,19 @@ function BabyAgent:_refresh_timeout_anim(remaining)
     end)
 end
 
----@param token integer
-function BabyAgent:finish_timeout_action(token)
-    if self.destroyed or self.timeout_action_token ~= token then
-        return
-    end
-
-    self.timeout_action_anchor_pos = nil
-    self:_unlock_timeout_move_state()
-
-    -- 与 _play_timeout_action 的 play_body_anim_by_id 对应，优先停全身动画
-    if self.unit and self.unit.stop_play_body_anim then
+function BabyAgent:_stop_timeout_action_visual()
+    local action_id = self.config.baby.timeout_action_id or 23
+    -- 只停止 Timeout 对应的全身动作。全局 stop_play_body_anim 会连同引擎当前的
+    -- 被举起姿势一起重置成站立，不能用于抓举事件回调。
+    if self.unit and self.unit.stop_play_body_anim_by_id then
+        pcall(function()
+            self.unit.stop_play_body_anim_by_id(action_id)
+        end)
+    elseif self.unit and self.unit.stop_play_body_anim_with_id then
+        pcall(function()
+            self.unit.stop_play_body_anim_with_id(action_id)
+        end)
+    elseif self.unit and self.unit.stop_play_body_anim then
         pcall(function()
             self.unit.stop_play_body_anim()
         end)
@@ -510,13 +511,140 @@ function BabyAgent:finish_timeout_action(token)
             self.unit.stop_anim()
         end)
     end
+end
+
+-- 只取消动作表现，Timeout 行为状态、剩余时间和当前需求全部保留。
+function BabyAgent:cancel_timeout_action_visual()
+    if self.timeout_action_visual_cancelled then
+        return
+    end
+    self.timeout_action_visual_cancelled = true
+    self:_stop_timeout_action_visual()
+end
+
+-- 预留玩法函数（当前不调用）：主动拒绝本次 Timeout 抱起。
+-- 未来可在 on_lifted_begin 中按概率调用，让抓举者立即放下宝宝。
+---@param lift_unit Unit|LifeEntity|nil
+---@return boolean
+function BabyAgent:reject_timeout_lift_attempt(lift_unit)
+    if self.destroyed or not self:is_in_state(self.enum.BabyState.Timeout) or not lift_unit then
+        return false
+    end
+
+    if lift_unit.lift then
+        return pcall(function() lift_unit.lift() end)
+    end
+    if lift_unit.cmd_lift then
+        return pcall(function() lift_unit.cmd_lift() end)
+    end
+    if lift_unit.ai_command_lift then
+        return pcall(function() lift_unit.ai_command_lift() end)
+    end
+    return false
+end
+
+-- 放下后若仍在 Timeout 且没有匹配到目标，恢复剩余时长的没满足动作。
+function BabyAgent:resume_timeout_action_visual()
+    local token = self.timeout_action_token
+    -- 放下事件回调触发时，引擎的 lifted 标记和默认姿势可能尚未完成切换；
+    -- 下一帧再恢复，避免恢复的 Timeout 动作又被放下默认站立覆盖。
+    LuaAPI.call_delay_time(0.0333, function()
+        if self.destroyed or self.timeout_action_token ~= token
+            or not self:is_in_state(self.enum.BabyState.Timeout) or self:_is_lifted_now() then
+            return
+        end
+        self.timeout_action_visual_cancelled = false
+        self:_lock_timeout_move_state()
+        self:_play_timeout_action(self.timeout_action_remaining or 1)
+    end)
+end
+
+-- 离开 Timeout 状态时注销旧回调并清理表现；不会刷新当前需求。
+function BabyAgent:cancel_timeout_action()
+    local visual_cancelled = self.timeout_action_visual_cancelled
+    self.timeout_action_token = self.timeout_action_token + 1
+    self.timeout_action_anchor_pos = nil
+    self.timeout_action_remaining = nil
+    self.timeout_action_visual_cancelled = false
+    self:_unlock_timeout_move_state()
+    if not visual_cancelled then
+        self:_stop_timeout_action_visual()
+    end
+end
+
+---@param token integer
+function BabyAgent:finish_timeout_action(token)
+    if self.destroyed or self.timeout_action_token ~= token then
+        return
+    end
+
+    local lifted = self:_is_lifted_now()
+    local lift_unit = self.last_lift_unit
+    local role = self.last_role
+    local visual_cancelled = self.timeout_action_visual_cancelled
+    self.timeout_action_anchor_pos = nil
+    self.timeout_action_remaining = nil
+    self:_unlock_timeout_move_state()
+    if not visual_cancelled then
+        self:_stop_timeout_action_visual()
+    end
 
     self:choose_next_need()
-    self:enter_state(self.enum.BabyState.Idle, nil, true)
+    if lifted then
+        self:enter_state(self.enum.BabyState.Carried, {
+            lift_unit = lift_unit,
+            role = role,
+            suppress_lift_event = true,
+        }, true)
+    else
+        self:enter_state(self.enum.BabyState.Idle, nil, true)
+    end
 end
 
 function BabyAgent:cancel_patrol()
     self.patrol_token = self.patrol_token + 1
+end
+
+-- 独立的移动表现锁：不切换行为状态、不修改需求，扫描和倒计时照常运行。
+---@param duration Fixed
+function BabyAgent:hold_movement(duration)
+    self.movement_hold_token = self.movement_hold_token + 1
+    local token = self.movement_hold_token
+    self.movement_held = true
+    self:stop_movement()
+    if not self.movement_hold_locked and self.unit and self.unit.add_state then
+        pcall(function()
+            self.unit.add_state(Enums.BuffState.BUFF_FORBID_MOVE)
+        end)
+        self.movement_hold_locked = true
+    end
+
+    LuaAPI.call_delay_time(duration, function()
+        if self.destroyed or self.movement_hold_token ~= token then
+            return
+        end
+        self.movement_held = false
+        self:_unlock_movement_hold()
+        if self:is_in_state(Enum.BabyState.Idle) and not self.view_model:is_busy() then
+            self:_command_next_patrol_point(self.patrol_token)
+        end
+    end)
+end
+
+function BabyAgent:_unlock_movement_hold()
+    if self.unit and self.movement_hold_locked and self.unit.remove_state then
+        pcall(function()
+            self.unit.remove_state(Enums.BuffState.BUFF_FORBID_MOVE)
+        end)
+    end
+    self.movement_hold_locked = false
+end
+
+-- 再次抱起或检测到目标时提前解除，避免硬锁影响后续拾取/设施交互。
+function BabyAgent:cancel_movement_hold()
+    self.movement_hold_token = self.movement_hold_token + 1
+    self.movement_held = false
+    self:_unlock_movement_hold()
 end
 
 function BabyAgent:start_patrol()
@@ -525,8 +653,11 @@ function BabyAgent:start_patrol()
     end
 
     self.patrol_token = self.patrol_token + 1
-    self:_command_next_patrol_point(self.patrol_token)
-    self:_scan_nearby_item(self.patrol_token)
+    local token = self.patrol_token
+    if not self.movement_held then
+        self:_command_next_patrol_point(token)
+    end
+    self:_scan_nearby_item(token)
 end
 
 -- 空闲/巡逻时就近扫描当前需求的物品：玩家把可拾取的小物件放到宝宝身边时，
@@ -541,17 +672,7 @@ function BabyAgent:_scan_nearby_item(token)
     if not self.view_model:is_busy() then
         local pos = self.unit.get_position and self.unit.get_position()
         if pos then
-            -- 设施需求：按设施本体就近匹配（把滑板/秋千搬到宝宝旁也能触发）
-            local facility = self:find_match_for_current_need(pos)
-            if facility then
-                self:enter_state(Enum.BabyState.InteractingFacility, { facility = facility }, true)
-                return
-            end
-            -- 物品需求：就近匹配掉落在地上的物品
-            local item = self.services.item:nearest_match(pos, self.current_need)
-            if item then
-                -- 进入 SeekingItem（busy 置真），本扫描循环到此结束
-                self:enter_state(Enum.BabyState.SeekingItem, { item = item }, true)
+            if self:try_match_current_need_at(pos) then
                 return
             end
         end
@@ -574,7 +695,8 @@ end
 
 ---@param token integer
 function BabyAgent:_command_next_patrol_point(token)
-    if self.destroyed or not self.unit or self.view_model:is_busy() or self.patrol_token ~= token then
+    if self.destroyed or not self.unit or self.movement_held
+        or self.view_model:is_busy() or self.patrol_token ~= token then
         return
     end
 
@@ -665,13 +787,29 @@ end
 
 ---@param data table|nil
 function BabyAgent:on_lifted_begin(data)
-    if self.destroyed or self.view_model:is_busy() then
+    if self.destroyed then
+        return
+    end
+
+    self:cancel_movement_hold()
+
+    local lift_unit = data and data.lift_unit or nil
+    local role = RoleUtil.get_role_by_unit(lift_unit)
+    if self:is_in_state(Enum.BabyState.Timeout) then
+        self.last_lift_unit = lift_unit
+        self.last_role = role
+        self:cancel_timeout_action_visual()
+        self:_unlock_timeout_move_state()
+        self:set_lift_enabled(true)
+        self.services.task:emit_lift_baby(self)
+        return
+    end
+
+    if self.view_model:is_busy() then
         return
     end
 
     self.is_rejecting = false
-    local lift_unit = data and data.lift_unit or nil
-    local role = RoleUtil.get_role_by_unit(lift_unit)
     self:enter_state(Enum.BabyState.Carried, {
         lift_unit = lift_unit,
         role = role,
@@ -680,35 +818,64 @@ end
 
 ---@param data table|nil
 function BabyAgent:on_lifted_end(data)
-    if self.destroyed or not self.unit or not self:is_in_state(Enum.BabyState.Carried) then
+    if self.destroyed or not self.unit then
         return
     end
 
     local pos = self.unit.get_position and self.unit.get_position()
+    if self:is_in_state(Enum.BabyState.Timeout) then
+        self.last_lift_unit = nil
+        self.last_role = nil
+        if pos and self:try_match_current_need_at(pos) then
+            return
+        end
+        self:resume_timeout_action_visual()
+        self:hold_movement(self.config.baby.drop_move_hold_seconds)
+        return
+    end
+
+    if not self:is_in_state(Enum.BabyState.Carried) then
+        return
+    end
+
     if not pos then
+        self:hold_movement(self.config.baby.drop_move_hold_seconds)
         self:enter_idle()
         return
     end
 
-    local facility = self:find_match_for_current_need(pos)
-    if facility then
-        self:enter_state(Enum.BabyState.InteractingFacility, { facility = facility }, true)
-        return
-    end
-
-    local item = self.services.item:nearest_match(pos, self.current_need)
-    if item then
-        self:enter_state(Enum.BabyState.SeekingItem, { item = item }, true)
+    if self:try_match_current_need_at(pos) then
         return
     end
 
     local wrong = self.services.item:nearest_to(pos)
     if wrong then
         -- 不是宝宝想要的：先捡到手上，之后再丢掉并表示不满意
+        self:cancel_movement_hold()
         self:enter_state(Enum.BabyState.SeekingItem, { item = wrong, reason = "wrong_item" }, true)
     else
+        self:hold_movement(self.config.baby.drop_move_hold_seconds)
         self:enter_idle()
     end
+end
+
+---@param pos Vector3
+---@return boolean
+function BabyAgent:try_match_current_need_at(pos)
+    local facility = self:find_match_for_current_need(pos)
+    if facility then
+        self:cancel_movement_hold()
+        self:enter_state(Enum.BabyState.InteractingFacility, { facility = facility }, true)
+        return true
+    end
+
+    local item = self.services.item:nearest_match(pos, self.current_need)
+    if item then
+        self:cancel_movement_hold()
+        self:enter_state(Enum.BabyState.SeekingItem, { item = item }, true)
+        return true
+    end
+    return false
 end
 
 ---@param pos Vector3
@@ -764,8 +931,8 @@ function BabyAgent:_wait_for_pickup_result(item, token, elapsed)
 
     local baby_pos = self.unit.get_position and self.unit.get_position()
     local item_pos = item.equipment.get_position and item.equipment.get_position()
-    local radius = self.config.baby.pickup_radius
-    if baby_pos and item_pos and UnitUtil.distance_sq(baby_pos, item_pos) <= radius * radius then
+    local radius = self.config.baby.contact_radius
+    if baby_pos and item_pos and UnitUtil.distance_xz_sq(baby_pos, item_pos) <= radius * radius then
         if self.services.item:force_pickup(self, item) then
             self:_resolve_pickup(item)
             return
@@ -905,6 +1072,7 @@ end
 ---@return nil
 function BabyAgent:destroy()
     self.destroyed = true
+    self:cancel_movement_hold()
     self:cancel_patrol()
     self:cancel_need_countdown()
     self.timeout_action_token = self.timeout_action_token + 1

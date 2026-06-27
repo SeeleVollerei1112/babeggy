@@ -6,6 +6,7 @@ local Log = require("Util.Log")
 ---@field def BabyNeedDef
 ---@field unit Unit|nil
 ---@field area Unit|nil
+---@field contact_area Unit|nil
 ---@field active_agent BabyAgent|nil
 ---@field bind_id any
 ---@field seat_token integer|nil
@@ -47,12 +48,16 @@ end
 function FacilityService:_register_facility(need)
     local unit = need.facility_name and LuaAPI.query_unit(need.facility_name) or nil
     local area = need.area_name and LuaAPI.query_unit(need.area_name) or nil
+    local contact_area = need.contact_area_name and LuaAPI.query_unit(need.contact_area_name) or nil
 
     if not unit then
         Log.warn("missing facility unit", need.id, need.facility_name)
     end
     if not area then
         Log.warn("missing facility area", need.id, need.area_name)
+    end
+    if need.contact_area_name and not contact_area then
+        Log.warn("missing facility contact area", need.id, need.contact_area_name)
     end
 
     self:_configure_facility_unit(unit, need)
@@ -61,6 +66,7 @@ function FacilityService:_register_facility(need)
         def = need,
         unit = unit,
         area = area,
+        contact_area = contact_area,
         active_agent = nil,
     }
     self.facilities[#self.facilities + 1] = facility
@@ -142,16 +148,17 @@ function FacilityService:nearest_match(pos, need, baby_unit)
     for index = 1, #self.facilities do
         local facility = self.facilities[index]
         if self.resolver and self.resolver:item_matches_need(facility, need) and not facility.active_agent then
-            -- 优先：宝宝就在设施触发区域内，直接命中
-            if facility.area and self:_unit_in_area(baby_unit, facility.area) then
+            -- 只有显式配置的近身接触区能触发交互。area 可能是滑板的整个巡游范围，
+            -- 不能把它当接触区，否则宝宝在区域任意位置都会被远距离送上设施。
+            if facility.contact_area and self:_unit_in_area(baby_unit, facility.contact_area) then
                 return facility
             end
-            -- 兜底：按与设施本体的距离做最近匹配。
-            -- 即使配置了 area 也保留此分支：触发区域判定偶发失灵 / 落点略微出界时仍可命中。
+            -- 没有专用接触区或区域判定未命中时，只按地面水平距离贴近设施本体。
+            -- 设施与宝宝枢轴高度不同，计入 Y 会导致站在正上方容易命中、两侧反而困难。
             if pos and facility.unit and facility.unit.get_position then
                 local facility_pos = facility.unit.get_position()
                 if facility_pos then
-                    local dist = UnitUtil.distance_sq(pos, facility_pos)
+                    local dist = UnitUtil.distance_xz_sq(pos, facility_pos)
                     if not best_dist or dist < best_dist then
                         best = facility
                         best_dist = dist
@@ -161,7 +168,7 @@ function FacilityService:nearest_match(pos, need, baby_unit)
         end
     end
 
-    local radius = self.config.baby.pickup_radius
+    local radius = (best and best.def and best.def.contact_radius) or self.config.baby.contact_radius
     if best_dist and best_dist <= radius * radius then
         return best
     end

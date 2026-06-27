@@ -15,4 +15,10 @@ function TimeoutState:enter(context)
     self.agent:begin_timeout_action()
 end
 
+---@param context BabyStateContext|nil
+function TimeoutState:exit(context)
+    self.agent:cancel_timeout_action()
+    TimeoutState.super.exit(self, context)
+end
+
 return TimeoutState

@@ -146,7 +146,7 @@ function ItemService:nearest_match(pos, need)
         if not item.done and matches and not held then
             local item_pos = item.equipment.get_position and item.equipment.get_position()
             if item_pos then
-                local dist = UnitUtil.distance_sq(pos, item_pos)
+                local dist = UnitUtil.distance_xz_sq(pos, item_pos)
                 if not best_dist or dist < best_dist then
                     best = item
                     best_dist = dist
@@ -155,7 +155,7 @@ function ItemService:nearest_match(pos, need)
         end
     end
 
-    local radius = self.config.baby.pickup_radius
+    local radius = self.config.baby.item_pickup_radius
     if best_dist and best_dist <= radius * radius then
         return best
     end

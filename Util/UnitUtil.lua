@@ -32,4 +32,15 @@ function UnitUtil.distance_sq(a, b)
     return dx * dx + dy * dy + dz * dz
 end
 
+-- 地面目标的接近判定只看水平面；单位与目标的枢轴高度不同，计入 Y 会造成
+-- 视觉上已经放在旁边，三维距离却仍超出拾取半径。
+---@param a Vector3
+---@param b Vector3
+---@return Fixed
+function UnitUtil.distance_xz_sq(a, b)
+    local dx = a.x - b.x
+    local dz = a.z - b.z
+    return dx * dx + dz * dz
+end
+
 return UnitUtil
