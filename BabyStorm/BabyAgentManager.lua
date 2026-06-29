@@ -48,6 +48,10 @@ local Log = require("Util.Log")
 ---@field triggers TriggerRegistry
 local BabyAgentManager = Class("BabyAgentManager")
 
+-- 统一 tick 间隔（秒）：约 3 个逻辑帧。所有宝宝的 NeedRuntime / 行为 phase /
+-- Movement / Animation reconcile 都由这一个 tick 驱动（替代散落的 call_delay_time + token）。
+local TICK_DT = 0.1
+
 ---@param application GameApplication|nil
 function BabyAgentManager:Ctor(application)
     self.application = application
@@ -56,6 +60,7 @@ function BabyAgentManager:Ctor(application)
     self.services = nil
     self.started = false
     self.triggers = TriggerRegistry.New()
+    self._tick_token = 0
 end
 
 ---@return boolean
@@ -123,8 +128,35 @@ function BabyAgentManager:start()
     game_view_model:set_active_baby_count(#self.agents)
     round:start()
 
+    self:_start_tick()
+
     Log.info("manager started")
     return true
+end
+
+-- 启动统一 tick 循环：每 TICK_DT 把 dt 派发给每个宝宝的 update。
+function BabyAgentManager:_start_tick()
+    self._tick_token = self._tick_token + 1
+    self:_tick(self._tick_token)
+end
+
+---@param token integer
+function BabyAgentManager:_tick(token)
+    if not self.started or self._tick_token ~= token then
+        return
+    end
+
+    local agents = self.agents
+    for index = 1, #agents do
+        local agent = agents[index]
+        if agent and not agent.destroyed then
+            agent:update(TICK_DT)
+        end
+    end
+
+    LuaAPI.call_delay_time(TICK_DT, function()
+        self:_tick(token)
+    end)
 end
 
 ---@param index integer
@@ -199,6 +231,9 @@ function BabyAgentManager:destroy()
     if not self.started and not self.services then
         return
     end
+
+    -- 令牌失效，统一 tick 循环下一拍自动停止。
+    self._tick_token = self._tick_token + 1
 
     if self.services and self.services.round then
         self.services.round:stop()

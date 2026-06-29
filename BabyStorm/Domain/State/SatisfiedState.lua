@@ -1,6 +1,8 @@
 local Class = require("BaseClass")
 local StateBase = require("BabyStorm.Domain.State.StateBase")
+local Intent = require("BabyStorm.Domain.BabyIntent")
 
+-- 满足后的开心表现 + 结算事件，随后回到 Idle。
 ---@class SatisfiedState: StateBase
 local SatisfiedState = Class("BabySatisfiedState", StateBase)
 
@@ -19,15 +21,19 @@ function SatisfiedState:enter(context)
     agent:cancel_need_countdown()
     agent:set_busy(true)
     agent:set_lift_enabled(false)
-    agent:stop_movement()
     agent:select_equipped_slot()
+    self:set_intent({
+        move_mode = Intent.MoveMode.Stop,
+        anim_base = Intent.AnimBase.Idle,
+        anim_overlay = Intent.AnimOverlay.Happy,
+        action_lock = false,
+    })
 
     if target then
         agent:set_status(agent.services.resolver:get_satisfied_text(agent.current_need, target))
         local result_delay = item and 3.0 or 1.5
         local happy_delay = result_delay + 3.0
-        -- 满意事件发出 1.5 秒后再发物品/设施分类事件，
-        -- 分类事件之后再等 1.5 秒发开心事件。
+        -- 满意事件发出 1.5 秒后再发物品/设施分类事件，分类事件之后再等 1.5 秒发开心事件。
         LuaAPI.call_delay_time(result_delay, function()
             if agent:is_in_state(agent.enum.BabyState.Satisfied) then
                 agent.services.task:emit_baby_satisfied(agent, target)
@@ -63,4 +69,3 @@ function SatisfiedState:enter(context)
 end
 
 return SatisfiedState
-

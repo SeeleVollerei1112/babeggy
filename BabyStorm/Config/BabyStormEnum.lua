@@ -18,7 +18,7 @@ Enum.BabyState = {
     Satisfied = 4,
     Upset = 5,
     InteractingFacility = 6,
-    Timeout = 7,
+    Cry = 7, -- 需求超时哭闹（原 Timeout，按「行为状态描述目的」重命名）
 }
 
 ---@type table<integer, string>
@@ -29,7 +29,7 @@ Enum.StateName = {
     [Enum.BabyState.Satisfied] = "Satisfied",
     [Enum.BabyState.Upset] = "Upset",
     [Enum.BabyState.InteractingFacility] = "InteractingFacility",
-    [Enum.BabyState.Timeout] = "Timeout",
+    [Enum.BabyState.Cry] = "Cry",
 }
 
 ---@param state_id integer

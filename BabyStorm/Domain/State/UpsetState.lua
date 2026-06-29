@@ -1,6 +1,8 @@
 local Class = require("BaseClass")
 local StateBase = require("BabyStorm.Domain.State.StateBase")
+local Intent = require("BabyStorm.Domain.BabyIntent")
 
+-- 错误物品 / 拾取失败的不满表现，短暂后回到 Idle。
 ---@class UpsetState: StateBase
 local UpsetState = Class("BabyUpsetState", StateBase)
 
@@ -16,6 +18,12 @@ function UpsetState:enter(context)
     local wrong_item = context and context.item or nil
 
     agent:set_busy(true)
+    self:set_intent({
+        move_mode = Intent.MoveMode.Stop,
+        anim_base = Intent.AnimBase.Idle,
+        anim_overlay = Intent.AnimOverlay.Angry,
+        action_lock = false,
+    })
     agent:set_status("不是想要的")
     agent.view_model:add_stress(1)
     if wrong_item then
