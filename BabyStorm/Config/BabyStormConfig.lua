@@ -4,6 +4,50 @@ local Prefab = require("Data.Prefab")
 ---@field area_name string
 ---@field ground_ray_up Fixed
 ---@field ground_ray_down Fixed
+---@field fallback_min_x Fixed
+---@field fallback_max_x Fixed
+---@field fallback_min_z Fixed
+---@field fallback_max_z Fixed
+---@field fallback_y Fixed
+
+---@class BabyBallRallyConfig
+---@field enabled boolean
+---@field ball_name string
+---@field server_baby_index integer
+---@field min_x Fixed
+---@field max_x Fixed
+---@field min_z Fixed
+---@field max_z Fixed
+---@field floor_y Fixed
+---@field ball_ground_origin_offset Fixed
+---@field gravity Fixed
+---@field initial_delay Fixed
+---@field hold_seconds Fixed
+---@field release_timeout Fixed
+---@field flight_time_min Fixed
+---@field flight_time_max Fixed
+---@field return_time_min Fixed
+---@field return_time_max Fixed
+---@field max_horizontal_speed Fixed
+---@field target_jitter_min Fixed
+---@field target_jitter_max Fixed
+---@field jump_prompt_lead Fixed
+---@field jump_hit_window Fixed
+---@field miss_grace Fixed
+---@field player_catch_radius Fixed
+---@field player_catch_height Fixed
+---@field player_box_margin Fixed
+---@field catch_height Fixed
+---@field catch_radius Fixed
+---@field serve_ball_height Fixed
+---@field marker_half_size Fixed
+---@field boundary_tolerance Fixed
+---@field indicator_sfx_key integer
+---@field indicator_sfx_scale Fixed
+---@field rally_round_min integer
+---@field rally_round_max integer
+---@field baby_jump_lead Fixed
+---@field debug_draw boolean
 
 ---@class BabyRuntimeConfig
 ---@field prefab_id integer
@@ -93,6 +137,7 @@ local Prefab = require("Data.Prefab")
 ---@field scoring BabyScoringConfig
 ---@field round BabyRoundConfig
 ---@field difficulty BabyDifficultyConfig
+---@field ball_rally BabyBallRallyConfig
 ---@field needs BabyNeedDef[]
 
 ---@type BabyStormConfig
@@ -102,6 +147,67 @@ Config.arena = {
     area_name = "tutorial_area",
     ground_ray_up = 50.0,
     ground_ray_down = 100.0,
+    -- “方块-可变形53”内缩 3 单位后的安全区。即使触发区尚未创建，
+    -- 宝宝也能在实际地板范围内生成，后续可无缝切回 tutorial_area。
+    fallback_min_x = -163.579,
+    fallback_max_x = -100.297,
+    fallback_min_z = 2.932,
+    fallback_max_z = 52.932,
+    fallback_y = 2.6,
+}
+
+Config.ball_rally = {
+    enabled = true,
+    ball_name = "沙滩球1",
+    server_baby_index = 1,
+
+    -- “方块-可变形53”的 AABB 为 X[-166.579,-97.297]、Z[-0.068,55.932]。
+    -- 这里四边内缩 3 单位，包含球半径和玩家站位余量。
+    min_x = -163.579,
+    max_x = -100.297,
+    min_z = 2.932,
+    max_z = 52.932,
+    floor_y = 2.384,
+    ball_ground_origin_offset = 0.45,
+
+    -- 运动学弧线高度参数：球由脚本按解析抛物线驱动（见 BallRallyService._drive_ball_kinematic），
+    -- 不再依赖引擎真实重力，落点精确等于标识点。此值只决定弧线高低，纯手感，可自由调。
+    gravity = 17.0,
+    initial_delay = 1.5,
+    hold_seconds = 1.0,
+    release_timeout = 0.8,
+    flight_time_min = 2.8,
+    flight_time_max = 3.6,
+    return_time_min = 2.0,
+    return_time_max = 2.8,
+    max_horizontal_speed = 11.0,
+    target_jitter_min = 5.0,
+    target_jitter_max = 12.0,
+    jump_prompt_lead = 1.2,
+    -- 玩家起跳后这么久内都算“在起跳窗口”，期间只要球落入落点盒就顶回。
+    jump_hit_window = 0.9,
+    miss_grace = 1.0,
+    -- 玩家侧“落点盒”：刻意比预警标识(marker_half_size)大，宽容接球。
+    --   判定 = 球下落进入盒(水平半径 player_catch_radius + 高度 player_catch_height)
+    --          且玩家站在盒附近(半径 + player_box_margin) + 处于起跳窗口。
+    -- 不再依赖球与玩家的物理碰撞，从根本上规避“落点漂移导致接不到/不匹配”。
+    player_catch_radius = 3.0,
+    -- 天井判定：球下落到 floor_y + 此值以下即可触发（不是窄区间，不会因 10Hz 漏帧错过）。
+    -- 取略高值，保证下落终盘(速度快)也有 ≥1 个 tick 的判定机会。
+    player_catch_height = 3.5,
+    player_box_margin = 1.5,
+    baby_jump_lead = 0.55,
+    catch_height = 1.5,
+    catch_radius = 2.0,
+    serve_ball_height = 1.5,
+    marker_half_size = 1.2,
+    -- 落点仍使用内缩安全区；飞行时允许举球挂点略微越过安全线，但不会越出真实地板。
+    boundary_tolerance = 2.0,
+    indicator_sfx_key = 20678,
+    indicator_sfx_scale = 1.0,
+    rally_round_min = 3,
+    rally_round_max = 4,
+    debug_draw = false,
 }
 
 Config.baby = {

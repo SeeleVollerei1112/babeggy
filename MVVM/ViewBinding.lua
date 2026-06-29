@@ -45,11 +45,11 @@ end
 
 ---@return nil
 function ViewBinding:destroy()
-    local seen = {}
+    -- 不能用 table（vm）作为 table 索引来去重（帧同步沙盒禁止 table/userdata 作键）。
+    -- remove_all_delegates 是幂等的，重复调用无副作用，直接逐条调用即可。
     for index = #self._bindings, 1, -1 do
         local vm = self._bindings[index].vm
-        if vm and not seen[vm] then
-            seen[vm] = true
+        if vm then
             vm:remove_all_delegates(self)
         end
     end

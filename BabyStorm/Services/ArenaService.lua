@@ -17,13 +17,32 @@ function ArenaService:init()
     local area_name = self.config.arena.area_name
     self.area = LuaAPI.query_unit(area_name)
     if not self.area then
-        Log.warn("missing trigger area:", area_name)
-        if GlobalAPI and GlobalAPI.show_tips then
-            GlobalAPI.show_tips("未找到触发区 " .. tostring(area_name), 3.0)
+        local arena = self.config.arena
+        if arena.fallback_min_x and arena.fallback_max_x and arena.fallback_min_z and arena.fallback_max_z then
+            Log.warn("missing trigger area, using configured bounds:", area_name)
+            return true
         end
+        Log.warn("missing trigger area:", area_name)
         return false
     end
     return true
+end
+
+---@param min_value Fixed
+---@param max_value Fixed
+---@return Fixed
+local function random_fixed(min_value, max_value)
+    local raw
+    if GameAPI and GameAPI.random_int then
+        raw = GameAPI.random_int(0, 10000)
+    else
+        raw = LuaAPI.rand and LuaAPI.rand() or 0
+        if raw < 0 then
+            raw = -raw
+        end
+        raw = raw % 10001
+    end
+    return min_value + (max_value - min_value) * (raw / 10000.0)
 end
 
 ---@return Vector3
@@ -33,6 +52,14 @@ function ArenaService:random_point()
     end
     if self.area and self.area.get_customtriggerspaces_random_point then
         return self.area.get_customtriggerspaces_random_point()
+    end
+    local arena = self.config.arena
+    if arena.fallback_min_x and arena.fallback_max_x and arena.fallback_min_z and arena.fallback_max_z then
+        return math.Vector3(
+            random_fixed(arena.fallback_min_x, arena.fallback_max_x),
+            arena.fallback_y or 1.0,
+            random_fixed(arena.fallback_min_z, arena.fallback_max_z)
+        )
     end
     return math.Vector3(0, 1, 0)
 end

@@ -9,6 +9,7 @@ local ScoreService = require("BabyStorm.Services.ScoreService")
 local TaskEventService = require("BabyStorm.Services.TaskEventService")
 local DifficultyService = require("BabyStorm.Services.DifficultyService")
 local RoundService = require("BabyStorm.Services.RoundService")
+local BallRallyService = require("BabyStorm.Services.BallRallyService")
 local BabySceneView = require("BabyStorm.View.BabySceneView")
 local BabyAgent = require("BabyStorm.Domain.BabyAgent")
 local GameViewModel = require("BabyStorm.Domain.GameViewModel")
@@ -26,6 +27,7 @@ local Log = require("Util.Log")
 ---@field task TaskEventService
 ---@field difficulty DifficultyService
 ---@field round RoundService
+---@field ball_rally BallRallyService
 ---@field view BabySceneView
 ---@field triggers TriggerRegistry
 ---@field game_view_model GameViewModel
@@ -98,6 +100,7 @@ function BabyAgentManager:start()
     local task = TaskEventService.New()
     local difficulty = DifficultyService.New(self.config, game_view_model)
     local round = RoundService.New(self.config, self.triggers, sessions, game_view_model)
+    local ball_rally = BallRallyService.New(self.config, self.triggers, sessions)
     local view = BabySceneView.New(self.config)
 
     self.services = {
@@ -110,6 +113,7 @@ function BabyAgentManager:start()
         task = task,
         difficulty = difficulty,
         round = round,
+        ball_rally = ball_rally,
         view = view,
         triggers = self.triggers,
         game_view_model = game_view_model,
@@ -124,6 +128,8 @@ function BabyAgentManager:start()
     for index = 1, self.config.baby.count do
         self:_create_baby(index)
     end
+
+    ball_rally:start(self.agents)
 
     game_view_model:set_active_baby_count(#self.agents)
     round:start()
@@ -152,6 +158,10 @@ function BabyAgentManager:_tick(token)
         if agent and not agent.destroyed then
             agent:update(TICK_DT)
         end
+    end
+
+    if self.services and self.services.ball_rally then
+        self.services.ball_rally:update(TICK_DT)
     end
 
     LuaAPI.call_delay_time(TICK_DT, function()
@@ -237,6 +247,10 @@ function BabyAgentManager:destroy()
 
     if self.services and self.services.round then
         self.services.round:stop()
+    end
+
+    if self.services and self.services.ball_rally then
+        self.services.ball_rally:destroy()
     end
 
     if self.triggers then
