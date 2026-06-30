@@ -39,6 +39,12 @@ function NeedResolver:is_rps_need(need)
     return self:get_resolver_type(need) == "rps"
 end
 
+---@param need BabyNeedDef|nil
+---@return boolean
+function NeedResolver:is_fight_need(need)
+    return self:get_resolver_type(need) == "fight"
+end
+
 ---@param item BabyItemRecord|BabyFacilityRecord|nil
 ---@param need BabyNeedDef|nil
 ---@return boolean

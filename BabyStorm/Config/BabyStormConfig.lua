@@ -62,6 +62,21 @@ local Prefab = require("Data.Prefab")
 ---@field landing_offset Fixed
 ---@field landing_height Fixed
 
+---@class BabyFightDirDef
+---@field dir Fixed[]
+---@field label string
+
+---@class BabyFightConfig
+---@field enabled boolean
+---@field engage_radius Fixed
+---@field target_tolerance Fixed
+---@field joystick_deadzone Fixed
+---@field segment_seconds Fixed
+---@field release_grace Fixed
+---@field required_segments integer
+---@field session_timeout Fixed
+---@field directions BabyFightDirDef[]
+
 ---@class BabyRuntimeConfig
 ---@field prefab_id integer
 ---@field count integer
@@ -100,7 +115,7 @@ local Prefab = require("Data.Prefab")
 
 ---@class BabyNeedDef
 ---@field id string
----@field resolver "equipment"|"facility"|"ball_rally"|"rps"
+---@field resolver "equipment"|"facility"|"ball_rally"|"rps"|"fight"
 ---@field item_key integer|nil
 ---@field item_name string|nil
 ---@field facility_id string|nil
@@ -153,6 +168,7 @@ local Prefab = require("Data.Prefab")
 ---@field difficulty BabyDifficultyConfig
 ---@field ball_rally BabyBallRallyConfig
 ---@field rps BabyRpsConfig
+---@field fight BabyFightConfig
 ---@field needs BabyNeedDef[]
 
 ---@type BabyStormConfig
@@ -252,6 +268,31 @@ Config.rps = {
     landing_height = 1.1,
 }
 
+Config.fight = {
+    enabled = true,
+    -- 玩家走进此水平半径内即可对好斗宝宝「拉架」，并被定身（禁止走动 buff）以专心转轮盘。
+    engage_radius = 3.0,
+    -- 轮盘方向与当前目标方向的对齐阈值：dot >= 此值算对准（≈0.6 约 53°，方便对准）。
+    target_tolerance = 0.6,
+    -- 轮盘输入向量模长低于此值视为「没在拨」，不计进度（避免松手也累积）。
+    joystick_deadzone = 0.3,
+    -- 对准目标方向持续这么久（秒）算完成一段。
+    segment_seconds = 0.6,
+    -- 已上场的拉架玩家连续这么久（秒）没在拨轮盘则解除定身放他走，避免被困住。
+    release_grace = 1.2,
+    -- 需要按顺序完成这么多段（即把轮盘依次转到几个指定方向）才把好斗宝宝拉开。
+    required_segments = 4,
+    -- 整场拉架的兜底超时（秒）：超时则放弃本需求、换下一个，避免卡死。
+    session_timeout = 30.0,
+    -- 候选目标方向（世界坐标 XZ）。按段数顺序循环取，确定性、不依赖随机。
+    directions = {
+        { dir = { 0, 0, 1 },  label = "前" },
+        { dir = { 1, 0, 0 },  label = "右" },
+        { dir = { 0, 0, -1 }, label = "后" },
+        { dir = { -1, 0, 0 }, label = "左" },
+    },
+}
+
 Config.baby = {
     prefab_id = (Prefab.character and Prefab.character["宝宝蛋"]) or 1073741937,
     count = 3,
@@ -347,6 +388,17 @@ Config.needs = {
         need_text = "想要玩猜拳",
         matched_text = "一起举起骰子",
         satisfied_text = "猜拳完成啦",
+    },
+    {
+        -- 好斗宝宝蛋：在原地打闹，需要玩家走近「拉架」。resolver = "fight" 由 FightService 接管，
+        -- 不走物品/设施解析。玩家站进 engage_radius 会被定身（禁止走动 buff），转动轮盘
+        -- 依次朝指定方向完成若干段即把宝宝拉开 → 满足。详见 FightService。
+        id = "aggressive",
+        resolver = "fight",
+        action_text = "拉架",
+        need_text = "好斗宝宝在打闹",
+        matched_text = "转动轮盘拉架",
+        satisfied_text = "被拉开啦",
     },
     {
         id = "swing",

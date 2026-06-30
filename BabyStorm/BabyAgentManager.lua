@@ -11,6 +11,7 @@ local DifficultyService = require("BabyStorm.Services.DifficultyService")
 local RoundService = require("BabyStorm.Services.RoundService")
 local BallRallyService = require("BabyStorm.Services.BallRallyService")
 local RpsService = require("BabyStorm.Services.RpsService")
+local FightService = require("BabyStorm.Services.FightService")
 local BabySceneView = require("BabyStorm.View.BabySceneView")
 local BabyAgent = require("BabyStorm.Domain.BabyAgent")
 local GameViewModel = require("BabyStorm.Domain.GameViewModel")
@@ -30,6 +31,7 @@ local Log = require("Util.Log")
 ---@field round RoundService
 ---@field ball_rally BallRallyService
 ---@field rps RpsService
+---@field fight FightService
 ---@field view BabySceneView
 ---@field triggers TriggerRegistry
 ---@field game_view_model GameViewModel
@@ -104,6 +106,7 @@ function BabyAgentManager:start()
     local round = RoundService.New(self.config, self.triggers, sessions, game_view_model)
     local ball_rally = BallRallyService.New(self.config, self.triggers, sessions)
     local rps = RpsService.New(self.config, self.triggers)
+    local fight = FightService.New(self.config, self.triggers)
     local view = BabySceneView.New(self.config)
 
     self.services = {
@@ -118,6 +121,7 @@ function BabyAgentManager:start()
         round = round,
         ball_rally = ball_rally,
         rps = rps,
+        fight = fight,
         view = view,
         triggers = self.triggers,
         game_view_model = game_view_model,
@@ -135,6 +139,7 @@ function BabyAgentManager:start()
 
     ball_rally:start(self.agents)
     rps:start(self.agents)
+    fight:start(self.agents)
 
     game_view_model:set_active_baby_count(#self.agents)
     round:start()
@@ -170,6 +175,9 @@ function BabyAgentManager:_tick(token)
     end
     if self.services and self.services.rps then
         self.services.rps:update(TICK_DT)
+    end
+    if self.services and self.services.fight then
+        self.services.fight:update(TICK_DT)
     end
 
     LuaAPI.call_delay_time(TICK_DT, function()
@@ -262,6 +270,9 @@ function BabyAgentManager:destroy()
     end
     if self.services and self.services.rps then
         self.services.rps:destroy()
+    end
+    if self.services and self.services.fight then
+        self.services.fight:destroy()
     end
 
     if self.triggers then

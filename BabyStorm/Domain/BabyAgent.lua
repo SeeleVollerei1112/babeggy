@@ -401,6 +401,8 @@ function BabyAgent:_new_state(state_id)
         cls = require("BabyStorm.Domain.State.UpsetState")
     elseif state_id == Enum.BabyState.Cry then
         cls = require("BabyStorm.Domain.State.CryState")
+    elseif state_id == Enum.BabyState.Fighting then
+        cls = require("BabyStorm.Domain.State.FightingState")
     else
         cls = require("BabyStorm.Domain.State.StateBase")
     end
@@ -730,6 +732,24 @@ function BabyAgent:finish_rps(role)
     self:enter_state(Enum.BabyState.Satisfied, {
         reason = "rps",
         status_text = (self.current_need and self.current_need.satisfied_text) or "猜拳完成啦",
+    }, true)
+end
+
+-- 拉架完成：把好斗宝宝拉开即满足该需求（基础满足分），随后开心表现并推进需求。
+-- 调用前 FightService 已解除拉架玩家的定身、并清理会话。
+---@param role Role|nil
+function BabyAgent:finish_fight(role)
+    if self.destroyed then
+        return
+    end
+    self.last_role = role
+    self.services.score:award_satisfied(role)
+    if self.services.difficulty then
+        self.services.difficulty:on_baby_satisfied(self)
+    end
+    self:enter_state(Enum.BabyState.Satisfied, {
+        reason = "fight",
+        status_text = (self.current_need and self.current_need.satisfied_text) or "被拉开啦",
     }, true)
 end
 
