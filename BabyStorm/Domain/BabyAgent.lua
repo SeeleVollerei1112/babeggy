@@ -58,6 +58,7 @@ local Log = require("Util.Log")
 ---@field need_timeout_bonus_seconds integer
 ---@field timeout_action_bonus_seconds integer
 ---@field active_facility BabyFacilityRecord|nil
+---@field required_carrier_role Role|nil
 ---@field _hold_remaining Fixed
 ---@field destroyed boolean
 local BabyAgent = Class("BabyAgent")
@@ -103,6 +104,8 @@ function BabyAgent:Ctor(index, unit, services, config)
     self.need_timeout_bonus_seconds = 0
     self.timeout_action_bonus_seconds = 0
     self.active_facility = nil
+    -- 「指定人物抱起」需求选定的目标玩家（其他玩家抱起会被拒绝）。
+    self.required_carrier_role = nil
 
     self._hold_remaining = 0.0
     self.destroyed = false
@@ -227,6 +230,12 @@ function BabyAgent:choose_next_need()
     end
 
     self.view_model:set_need(self.current_need)
+    -- 指定人物抱起需求：挑一个目标玩家；其它需求清空目标。
+    if self.services.resolver:is_carry_need(self.current_need) then
+        self.required_carrier_role = self:_pick_required_carrier()
+    else
+        self.required_carrier_role = nil
+    end
     local seconds = self:get_need_timeout_seconds()
     Log.info("baby", self.index, "need", self.current_need.id, "timeout", seconds)
     self.need_runtime:start(seconds)
@@ -401,6 +410,8 @@ function BabyAgent:_new_state(state_id)
         cls = require("BabyStorm.Domain.State.UpsetState")
     elseif state_id == Enum.BabyState.Cry then
         cls = require("BabyStorm.Domain.State.CryState")
+    elseif state_id == Enum.BabyState.WaitForCarrier then
+        cls = require("BabyStorm.Domain.State.WaitForCarrierState")
     else
         cls = require("BabyStorm.Domain.State.StateBase")
     end
@@ -418,6 +429,10 @@ end
 
 ---@return boolean
 function BabyAgent:enter_idle()
+    -- 指定人物抱起需求改去 WaitForCarrier 等待目标玩家；其余走普通 Idle。
+    if self.services.resolver:is_carry_need(self.current_need) then
+        return self:enter_state(Enum.BabyState.WaitForCarrier)
+    end
     return self:enter_state(Enum.BabyState.Idle)
 end
 
@@ -441,6 +456,13 @@ function BabyAgent:on_lifted_begin(data)
 
     local lift_unit = data and data.lift_unit or nil
     local role = RoleUtil.get_role_by_unit(lift_unit)
+
+    -- 指定人物抱起需求：在等待（WaitForCarrier）或兜底 Idle 时，校验抱起者是否是指定玩家。
+    if self.services.resolver:is_carry_need(self.current_need)
+        and (self:is_in_state(Enum.BabyState.WaitForCarrier) or self:is_in_state(Enum.BabyState.Idle)) then
+        self:_handle_carry_lift(role, lift_unit)
+        return
+    end
 
     -- Cry 期间被抱起：概率拒绝；否则切到「被举着哭」表现，但不结束哭闹倒计时。
     if self:is_in_state(Enum.BabyState.Cry) then
@@ -761,10 +783,11 @@ function BabyAgent:should_reject_timeout_lift()
     return roll <= chance
 end
 
+-- 让举着宝宝的玩家单位把宝宝放下（再次触发 lift 开关即取消举起）。
 ---@param lift_unit Unit|LifeEntity|nil
 ---@return boolean
-function BabyAgent:reject_timeout_lift_attempt(lift_unit)
-    if self.destroyed or not self:is_in_state(Enum.BabyState.Cry) or not lift_unit then
+function BabyAgent:_toggle_lifter_drop(lift_unit)
+    if not lift_unit then
         return false
     end
     if lift_unit.lift then
@@ -779,6 +802,15 @@ function BabyAgent:reject_timeout_lift_attempt(lift_unit)
     return false
 end
 
+---@param lift_unit Unit|LifeEntity|nil
+---@return boolean
+function BabyAgent:reject_timeout_lift_attempt(lift_unit)
+    if self.destroyed or not self:is_in_state(Enum.BabyState.Cry) then
+        return false
+    end
+    return self:_toggle_lifter_drop(lift_unit)
+end
+
 ---@return boolean
 function BabyAgent:_is_lifted_now()
     if self.unit and self.unit.is_lifted_status then
@@ -788,6 +820,80 @@ function BabyAgent:_is_lifted_now()
         return ok and lifted or false
     end
     return false
+end
+
+-- ============================================================
+-- 指定人物抱起（一般宝宝蛋）：只接受 required_carrier_role 抱起，其余拒绝。
+-- ============================================================
+
+---@private
+-- 按宝宝序号确定性地从当前有效玩家里挑一个目标（帧同步安全，不用随机）。
+---@return Role|nil
+function BabyAgent:_pick_required_carrier()
+    local roles = GameAPI and GameAPI.get_all_valid_roles and GameAPI.get_all_valid_roles() or {}
+    local count = #roles
+    if count == 0 then
+        return nil
+    end
+    local pick = (self.index - 1) % count + 1
+    return roles[pick]
+end
+
+---@private
+---@param role Role|nil
+---@return boolean
+function BabyAgent:_is_required_carrier(role)
+    local required = self.required_carrier_role
+    -- 没有有效目标（如无玩家）时不卡死：谁抱都算对。
+    if not required then
+        return true
+    end
+    return RoleUtil.get_role_id(role) == RoleUtil.get_role_id(required)
+end
+
+---@private
+---@param role Role|nil
+---@param lift_unit Unit|LifeEntity|nil
+function BabyAgent:_handle_carry_lift(role, lift_unit)
+    if self:_is_required_carrier(role) then
+        self:complete_carry_need(role, lift_unit)
+    else
+        self:reject_carry_lift(lift_unit)
+    end
+end
+
+-- 指定的人抱起：满足需求（计分 + 开心表现 + 推进下一个需求）。
+---@param role Role|nil
+---@param lift_unit Unit|LifeEntity|nil
+function BabyAgent:complete_carry_need(role, lift_unit)
+    if self.destroyed then
+        return
+    end
+    self.last_role = role
+    self.last_lift_unit = lift_unit
+    self:cancel_need_countdown()
+    self.services.score:award_satisfied(role)
+    if self.services.difficulty then
+        self.services.difficulty:on_baby_satisfied(self)
+    end
+    -- 满足由「被抱起」触发，补发举起任务事件（绕过了 Carried 状态）。
+    self.services.task:emit_lift_baby(self)
+    self:enter_state(Enum.BabyState.Satisfied, {
+        reason = "specific_carrier",
+        status_text = (self.current_need and self.current_need.satisfied_text) or "被抱起来啦",
+    }, true)
+end
+
+-- 错误的人抱起：放下宝宝 + 表示不满，仍停留在 WaitForCarrier 等指定的人。
+---@param lift_unit Unit|LifeEntity|nil
+function BabyAgent:reject_carry_lift(lift_unit)
+    if self.destroyed then
+        return
+    end
+    self:_toggle_lifter_drop(lift_unit)
+    self.view_model:add_stress(1)
+    self:set_status("不要你抱！")
+    Log.info("baby", self.index, "reject carry lift by wrong role")
 end
 
 -- ============================================================
@@ -801,6 +907,7 @@ function BabyAgent:destroy()
     self.pickup_target = nil
     self.is_rejecting = false
     self.active_facility = nil
+    self.required_carrier_role = nil
     self._hold_remaining = 0.0
 
     if self.active_state and self.active_state:is_active() then

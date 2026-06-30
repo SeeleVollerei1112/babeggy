@@ -100,7 +100,7 @@ local Prefab = require("Data.Prefab")
 
 ---@class BabyNeedDef
 ---@field id string
----@field resolver "equipment"|"facility"|"ball_rally"|"rps"
+---@field resolver "equipment"|"facility"|"ball_rally"|"rps"|"carry"
 ---@field item_key integer|nil
 ---@field item_name string|nil
 ---@field facility_id string|nil
@@ -347,6 +347,17 @@ Config.needs = {
         need_text = "想要玩猜拳",
         matched_text = "一起举起骰子",
         satisfied_text = "猜拳完成啦",
+    },
+    {
+        -- 一般宝宝蛋「指定人物抱起」需求：宝宝挑一个指定玩家，只有该玩家抱起才满足，
+        -- 其他玩家抱起会被拒绝（放下 + 不满）。resolver = "carry" 不走物品/设施解析，
+        -- 宝宝在 WaitForCarrier 状态等待，满足/拒绝逻辑在 BabyAgent:on_lifted_begin。
+        id = "specific_carrier",
+        resolver = "carry",
+        action_text = "抱抱",
+        need_text = "想让指定的人抱抱",
+        matched_text = "被抱起来",
+        satisfied_text = "被抱起来啦",
     },
     {
         id = "swing",
