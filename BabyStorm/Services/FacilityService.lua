@@ -104,8 +104,8 @@ end
 -- 板被骑时会带着玩家一起移动，真正的骑手会持续贴在板上，旁观者会被甩开。
 -- 因此判定 = 持续（去抖）有非宝宝角色贴在板的水平范围内；持续离开才算下板。
 local PLAYER_BOUND_DT = 0.0166 -- ~60Hz：跟随/朝向逼近的步子更细腻，配合 smooth 接口不卡顿
-local ON_BOARD_TICKS = 12 -- 连续约 0.2s 贴在板上才确认上板（滤掉路过蹭碰）
-local OFF_BOARD_TICKS = 18 -- 连续约 0.3s 离开板才确认下板（滤掉跳跃/抖动瞬间脱离）
+local ON_BOARD_TICKS = 12      -- 连续约 0.2s 贴在板上才确认上板（滤掉路过蹭碰）
+local OFF_BOARD_TICKS = 18     -- 连续约 0.3s 离开板才确认下板（滤掉跳跃/抖动瞬间脱离）
 
 ---找出“正站在板上”的非宝宝角色：水平距离贴近板本体（板会移动，按板当前位置算）。
 ---@param facility BabyFacilityRecord
@@ -361,6 +361,8 @@ function FacilityService:_set_interact_button_text(unit, btn_type, text)
         end)
     end
 end
+
+-- 一个新的解决办法，抛起骰子后，基本上位于头顶区域，只要往四周走一点距离再跳起就能给到碰撞效果，这个碰撞效果可以实现骰子的翻转。所以我们也不需要手动旋转了。就保留个当前向上投的代码。然后玩家测就自己负责执行操作。ai宝宝测就自动移动一点距离然后跳起。大致效果: 如果跳起来投，不动一直跳，就会像马里奥顶箱子一样，一直不落下， 只要你往周围偏移点距离，骰子就会翻转，偏移如果不大，还能继续顶,我们只要检测骰子落地最后结算就行。这样的话就能分配路径去实现胜负判定效果了
 
 ---@param unit Unit|LifeEntity|nil
 ---@param area Unit|nil
@@ -867,9 +869,9 @@ end
 ---@param agent BabyAgent
 ---@param facility BabyFacilityRecord
 function FacilityService:_end_vehicle_ride(agent, facility)
-    facility.seat_token = nil -- 令牌失效，巡游循环与骑行动作循环下一拍自动停止
-    facility.drive = nil -- 清掉巡游状态，下次上板重新初始化
-    self:_stop_ride_anim(agent) -- 下板：停掉骑行动作
+    facility.seat_token = nil          -- 令牌失效，巡游循环与骑行动作循环下一拍自动停止
+    facility.drive = nil               -- 清掉巡游状态，下次上板重新初始化
+    self:_stop_ride_anim(agent)        -- 下板：停掉骑行动作
     if agent and agent.unlock_ride_move_state then
         agent:unlock_ride_move_state() -- 解除骑行移动锁，恢复 AI/移动
     end

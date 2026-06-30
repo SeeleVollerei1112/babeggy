@@ -7,6 +7,7 @@ local ControllerRegistry = {}
 ---@type GameController[]
 ControllerRegistry.controllers = {
     require("BabyStorm.BabyStormController"),
+    require("BabyStorm.CameraModeController"),
 }
 
 ---@param application GameApplication

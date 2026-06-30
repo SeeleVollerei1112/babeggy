@@ -49,7 +49,7 @@ function SatisfiedState:enter(context)
             agent.services.difficulty:on_baby_satisfied(agent)
         end
     else
-        agent:set_status("满足了")
+        agent:set_status((context and context.status_text) or "满足了")
     end
 
     local finish_delay = agent.config.baby.satisfied_react_time

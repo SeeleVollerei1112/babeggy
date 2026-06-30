@@ -13,14 +13,17 @@ local Prefab = require("Data.Prefab")
 ---@class BabyBallRallyConfig
 ---@field enabled boolean
 ---@field ball_name string
----@field server_baby_index integer
+---@field trigger_radius Fixed
 ---@field min_x Fixed
 ---@field max_x Fixed
 ---@field min_z Fixed
 ---@field max_z Fixed
 ---@field floor_y Fixed
 ---@field ball_ground_origin_offset Fixed
----@field gravity Fixed
+---@field arc_height_ratio Fixed
+---@field arc_peak_min Fixed
+---@field arc_peak_max Fixed
+---@field flight_hang Fixed
 ---@field initial_delay Fixed
 ---@field hold_seconds Fixed
 ---@field release_timeout Fixed
@@ -31,6 +34,7 @@ local Prefab = require("Data.Prefab")
 ---@field max_horizontal_speed Fixed
 ---@field target_jitter_min Fixed
 ---@field target_jitter_max Fixed
+---@field min_throw_distance Fixed
 ---@field jump_prompt_lead Fixed
 ---@field jump_hit_window Fixed
 ---@field miss_grace Fixed
@@ -44,10 +48,19 @@ local Prefab = require("Data.Prefab")
 ---@field boundary_tolerance Fixed
 ---@field indicator_sfx_key integer
 ---@field indicator_sfx_scale Fixed
----@field rally_round_min integer
----@field rally_round_max integer
----@field baby_jump_lead Fixed
+---@field celebrate_hold_seconds Fixed
+---@field rally_max_min integer
+---@field rally_max_max integer
 ---@field debug_draw boolean
+
+---@class BabyRpsConfig
+---@field enabled boolean
+---@field dice_names string[]
+---@field trigger_radius Fixed
+---@field throw_duration Fixed
+---@field throw_height Fixed
+---@field landing_offset Fixed
+---@field landing_height Fixed
 
 ---@class BabyRuntimeConfig
 ---@field prefab_id integer
@@ -76,6 +89,7 @@ local Prefab = require("Data.Prefab")
 ---@class BabyScoringConfig
 ---@field satisfy_score integer
 ---@field wrong_item_penalty integer
+---@field ball_catch_score integer
 
 ---@class BabyRoundConfig
 ---@field duration_seconds integer
@@ -86,7 +100,7 @@ local Prefab = require("Data.Prefab")
 
 ---@class BabyNeedDef
 ---@field id string
----@field resolver "equipment"|"facility"
+---@field resolver "equipment"|"facility"|"ball_rally"|"rps"
 ---@field item_key integer|nil
 ---@field item_name string|nil
 ---@field facility_id string|nil
@@ -138,6 +152,7 @@ local Prefab = require("Data.Prefab")
 ---@field round BabyRoundConfig
 ---@field difficulty BabyDifficultyConfig
 ---@field ball_rally BabyBallRallyConfig
+---@field rps BabyRpsConfig
 ---@field needs BabyNeedDef[]
 
 ---@type BabyStormConfig
@@ -159,7 +174,11 @@ Config.arena = {
 Config.ball_rally = {
     enabled = true,
     ball_name = "沙滩球1",
-    server_baby_index = 1,
+    -- 触发半径：宝宝持「玩沙滩球」需求且沙滩球(处于自由静止状态)落在此半径内才开顶球。
+    -- 因为宝宝平时几乎不位移、球又是单一定点物体，默认给到“整屋”尺度(≈场地对角线)，
+    -- 等价于“需求驱动 + 球在场上可用即触发”，球随后会被吸到发球宝宝头顶。
+    -- 若日后让宝宝可走动、或想做成“玩家把球抱到宝宝身边才触发”，把它调小即可。
+    trigger_radius = 4.0,
 
     -- “方块-可变形53”的 AABB 为 X[-166.579,-97.297]、Z[-0.068,55.932]。
     -- 这里四边内缩 3 单位，包含球半径和玩家站位余量。
@@ -170,19 +189,27 @@ Config.ball_rally = {
     floor_y = 2.384,
     ball_ground_origin_offset = 0.45,
 
-    -- 运动学弧线高度参数：球由脚本按解析抛物线驱动（见 BallRallyService._drive_ball_kinematic），
-    -- 不再依赖引擎真实重力，落点精确等于标识点。此值只决定弧线高低，纯手感，可自由调。
-    gravity = 17.0,
+    -- 运动学参数化弧线（见 BallRallyService._drive_ball_kinematic）：弧高与时长解耦。
+    -- 弧高随本次水平投掷距离自动缩放（远→高、近→低，避免“飞很远却很平”或“近距离高高抛起”的违和）：
+    --   peak = clamp(arc_height_ratio * 水平距离, arc_peak_min, arc_peak_max)。
+    arc_height_ratio = 0.3,
+    arc_peak_min = 2.5,
+    arc_peak_max = 11.0,
+    -- flight_hang：空中“两端快、中间慢”的程度，0=匀速，1=顶点近乎悬停；越大顶点停留感越强、越好对接球时机。
+    -- 调小 → 中段更快（用户反馈“中间太慢”）。
+    flight_hang = 0.4,
     initial_delay = 1.5,
     hold_seconds = 1.0,
     release_timeout = 0.8,
-    flight_time_min = 2.8,
-    flight_time_max = 3.6,
-    return_time_min = 2.0,
-    return_time_max = 2.8,
+    flight_time_min = 3.0,
+    flight_time_max = 4.0,
+    return_time_min = 2.5,
+    return_time_max = 3.5,
     max_horizontal_speed = 11.0,
     target_jitter_min = 5.0,
     target_jitter_max = 12.0,
+    -- 落点离发球宝宝的最小水平距离：太近的投球看起来很怪，低于此值会被沿方向推远。
+    min_throw_distance = 12.0,
     jump_prompt_lead = 1.2,
     -- 玩家起跳后这么久内都算“在起跳窗口”，期间只要球落入落点盒就顶回。
     jump_hit_window = 0.9,
@@ -196,7 +223,6 @@ Config.ball_rally = {
     -- 取略高值，保证下落终盘(速度快)也有 ≥1 个 tick 的判定机会。
     player_catch_height = 3.5,
     player_box_margin = 1.5,
-    baby_jump_lead = 0.55,
     catch_height = 1.5,
     catch_radius = 2.0,
     serve_ball_height = 1.5,
@@ -205,9 +231,25 @@ Config.ball_rally = {
     boundary_tolerance = 2.0,
     indicator_sfx_key = 20678,
     indicator_sfx_scale = 1.0,
-    rally_round_min = 3,
-    rally_round_max = 4,
+    -- 一局顶球的“回合上限”：玩家成功顶到这么多次即算完成（满分结束）；中途漏接则提前结束（按已顶次数计分）。
+    -- 每局在 [min,max] 间随机，给点变化。
+    rally_max_min = 4,
+    rally_max_max = 5,
+    -- 顶满收尾时，宝宝把球举到头顶庆祝多少秒后再落球结算。
+    celebrate_hold_seconds = 3.0,
     debug_draw = false,
+}
+
+Config.rps = {
+    enabled = true,
+    dice_names = { "手势骰子3", "手势骰子2" },
+    -- 任意一个骰子到宝宝身边即可触发宝宝举起；玩家举另一个时也要进入同一范围。
+    trigger_radius = 3.0,
+    throw_duration = 1.8,
+    throw_height = 4.0,
+    landing_offset = 0.8,
+    -- 骰子约 2x2x2，枢轴在底面；随机侧面朝上时需先把枢轴抬高再恢复重力。
+    landing_height = 1.1,
 }
 
 Config.baby = {
@@ -240,6 +282,9 @@ Config.baby = {
 Config.scoring = {
     satisfy_score = 10,
     wrong_item_penalty = 0,
+    -- 顶球玩法每成功顶回一次的额外奖励分（满足该需求另算 satisfy_score 基础分）。
+    -- “接的越多，加的分越多”：总分 = satisfy_score + 成功顶球次数 * ball_catch_score。
+    ball_catch_score = 5,
 }
 
 Config.round = {
@@ -281,6 +326,27 @@ Config.needs = {
         need_text = "想要吃蛋糕",
         matched_text = "去吃蛋糕",
         satisfied_text = "吃到蛋糕了",
+    },
+    {
+        -- 顶球玩法需求：由 BallRallyService 扫描接管（宝宝持此需求且场上有可用沙滩球即开局）。
+        -- resolver = "ball_rally" 不走物品/设施解析：宝宝既不会去捡、玩家也不用抱去设施，
+        -- 只是挂着倒计时等待顶球开局；接不到即结束并按 satisfy_score + 顶球次数 计分。
+        id = "beach_ball",
+        resolver = "ball_rally",
+        item_name = "沙滩球",
+        action_text = "顶球",
+        need_text = "想要玩沙滩球",
+        matched_text = "去顶球",
+        satisfied_text = "玩到沙滩球了",
+    },
+    {
+        id = "rock_paper_scissors",
+        resolver = "rps",
+        item_name = "手势骰子",
+        action_text = "猜拳",
+        need_text = "想要玩猜拳",
+        matched_text = "一起举起骰子",
+        satisfied_text = "猜拳完成啦",
     },
     {
         id = "swing",

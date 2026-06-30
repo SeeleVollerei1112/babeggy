@@ -25,6 +25,7 @@ local Log = require("Util.Log")
 ---@field lift_unit Unit|nil
 ---@field role Role|nil
 ---@field reason string|nil
+---@field status_text string|nil
 ---@field suppress_lift_event boolean|nil
 ---@field delivery_method "baby_to_item"|"item_to_baby"|"baby_to_facility"|nil
 
@@ -694,6 +695,42 @@ function BabyAgent:finish_satisfied(item)
     end
     self:choose_next_need()
     self:enter_idle()
+end
+
+-- 顶球玩法结束结算（由 BallRallyService 在玩家漏接、会话收尾时调用）。
+-- 一律算作满足该需求：基础满足分 + 按成功顶球次数追加奖励（接的越多分越多），
+-- 随后走一遍开心表现并推进到下一个需求。调用前 BallRallyService 已解除接管锁。
+---@param role Role|nil
+---@param catches integer
+function BabyAgent:finish_ball_rally(role, catches)
+    if self.destroyed then
+        return
+    end
+    self.last_role = role
+    self.services.score:award_satisfied(role)
+    self.services.score:award_ball_bonus(role, catches or 0)
+    if self.services.difficulty then
+        self.services.difficulty:on_baby_satisfied(self)
+    end
+    -- 复用满足状态的开心表现 + 自动推进需求（nil 目标不会重复计分）。
+    self:enter_state(Enum.BabyState.Satisfied, { reason = "ball_rally" }, true)
+end
+
+-- 猜拳只结算“共同完成一次抛骰”，不判断石头剪刀布胜负。
+---@param role Role|nil
+function BabyAgent:finish_rps(role)
+    if self.destroyed then
+        return
+    end
+    self.last_role = role
+    self.services.score:award_satisfied(role)
+    if self.services.difficulty then
+        self.services.difficulty:on_baby_satisfied(self)
+    end
+    self:enter_state(Enum.BabyState.Satisfied, {
+        reason = "rps",
+        status_text = (self.current_need and self.current_need.satisfied_text) or "猜拳完成啦",
+    }, true)
 end
 
 -- ============================================================

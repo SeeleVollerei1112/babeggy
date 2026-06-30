@@ -27,6 +27,18 @@ function NeedResolver:is_facility_need(need)
     return self:get_resolver_type(need) == "facility"
 end
 
+---@param need BabyNeedDef|nil
+---@return boolean
+function NeedResolver:is_ball_rally_need(need)
+    return self:get_resolver_type(need) == "ball_rally"
+end
+
+---@param need BabyNeedDef|nil
+---@return boolean
+function NeedResolver:is_rps_need(need)
+    return self:get_resolver_type(need) == "rps"
+end
+
 ---@param item BabyItemRecord|BabyFacilityRecord|nil
 ---@param need BabyNeedDef|nil
 ---@return boolean
