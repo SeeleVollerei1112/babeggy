@@ -2,6 +2,8 @@ local Class = require("BaseClass")
 local UnitUtil = require("Util.UnitUtil")
 local Log = require("Util.Log")
 
+local ZERO = math.Vector3(0.0, 0.0, 0.0)
+
 ---@class BabyFacilityRecord
 ---@field def BabyNeedDef
 ---@field unit Unit|nil
@@ -60,15 +62,30 @@ function FacilityService:init()
     end
 end
 
+-- 一个 need 可对应多个可互换的设施单位（如两个秋千座椅）：facility_names 列表里每个名字
+-- 各注册一条共享同一 def 的记录，nearest_match 会就近挑空闲的那个。退化到单个 facility_name。
 ---@param need BabyNeedDef
----@return BabyFacilityRecord
 function FacilityService:_register_facility(need)
-    local unit = need.facility_name and LuaAPI.query_unit(need.facility_name) or nil
+    local names = need.facility_names
+    if names and #names > 0 then
+        for index = 1, #names do
+            self:_register_facility_unit(need, names[index])
+        end
+    else
+        self:_register_facility_unit(need, need.facility_name)
+    end
+end
+
+---@param need BabyNeedDef
+---@param facility_name string|nil
+---@return BabyFacilityRecord
+function FacilityService:_register_facility_unit(need, facility_name)
+    local unit = facility_name and LuaAPI.query_unit(facility_name) or nil
     local area = need.area_name and LuaAPI.query_unit(need.area_name) or nil
     local contact_area = need.contact_area_name and LuaAPI.query_unit(need.contact_area_name) or nil
 
     if not unit then
-        Log.warn("missing facility unit", need.id, need.facility_name)
+        Log.warn("missing facility unit", need.id, facility_name)
     end
     if not area then
         Log.warn("missing facility area", need.id, need.area_name)
@@ -331,8 +348,8 @@ function FacilityService:_configure_facility_unit(unit, need)
         return
     end
 
-    -- 载具不挂玩家互动按钮：避免玩家自己按键把车开走，宝宝才是“驾驶员”
-    if need.facility_kind == "vehicle" then
+    -- 载具/秋千座椅不挂玩家互动按钮：交互由“玩家把宝宝抱来放下”触发，避免玩家自己按键。
+    if need.facility_kind == "vehicle" or need.facility_kind == "swing_seat" then
         return
     end
 
@@ -361,8 +378,6 @@ function FacilityService:_set_interact_button_text(unit, btn_type, text)
         end)
     end
 end
-
--- 一个新的解决办法，抛起骰子后，基本上位于头顶区域，只要往四周走一点距离再跳起就能给到碰撞效果，这个碰撞效果可以实现骰子的翻转。所以我们也不需要手动旋转了。就保留个当前向上投的代码。然后玩家测就自己负责执行操作。ai宝宝测就自动移动一点距离然后跳起。大致效果: 如果跳起来投，不动一直跳，就会像马里奥顶箱子一样，一直不落下， 只要你往周围偏移点距离，骰子就会翻转，偏移如果不大，还能继续顶,我们只要检测骰子落地最后结算就行。这样的话就能分配路径去实现胜负判定效果了
 
 ---@param unit Unit|LifeEntity|nil
 ---@param area Unit|nil
@@ -462,6 +477,8 @@ function FacilityService:begin_interaction(agent, facility)
     facility.active_agent = agent
     if self:_is_vehicle(facility) then
         self:_begin_vehicle_ride(agent, facility, duration)
+    elseif self:_is_swing_seat(facility) then
+        self:_begin_swing_seat(agent, facility, duration)
     else
         self:_seat_agent(agent, facility, duration)
     end
@@ -521,9 +538,28 @@ function FacilityService:_sync_seat(agent, facility, token)
         if pos then
             pcall(function() agent.unit.set_position(pos) end)
         end
-        local rot = self:_to_quaternion(def.seat_rotation)
-        if rot and agent.unit.set_orientation then
-            pcall(function() agent.unit.set_orientation(rot) end)
+        -- 朝向：seat_follow_orientation=true 时跟随座椅实时朝向（宝宝随秋千一起前后倾，
+        -- 可叠加 seat_rotation 偏移）；否则用固定 seat_rotation（原静止秋千行为）。
+        if agent.unit.set_orientation then
+            local rot = nil
+            if def.seat_follow_orientation and facility.unit.get_orientation then
+                local ok, srot = pcall(function() return facility.unit.get_orientation() end)
+                if ok and srot then
+                    rot = srot
+                    local off = self:_to_quaternion(def.seat_rotation)
+                    if off then
+                        local mok, composed = pcall(function() return srot * off end)
+                        if mok and composed then
+                            rot = composed
+                        end
+                    end
+                end
+            else
+                rot = self:_to_quaternion(def.seat_rotation)
+            end
+            if rot then
+                pcall(function() agent.unit.set_orientation(rot) end)
+            end
         end
     end
 
@@ -547,6 +583,110 @@ function FacilityService:_unseat_agent(agent, facility)
         end)
     end
     facility.bind_id = nil
+end
+
+-- ===== 秋千座椅：把宝宝绑到会摆动的座椅上，并周期性给座椅施力让它越摆越高 =====
+-- 与上面 winter_swing（设施组件收到自定义事件后自己摆）不同：这里座椅是物理刚体，
+-- 由脚本 apply_force 驱动摆动，宝宝像绑滑板那样每帧硬粘到座位点、跟随座椅朝向一起摆。
+-- 复用 _seat_agent/_sync_seat 做绑定与坐姿动画，只额外加：锁移动、关碰撞、施力循环。
+
+---@param facility BabyFacilityRecord|nil
+---@return boolean
+function FacilityService:_is_swing_seat(facility)
+    return facility ~= nil and facility.def ~= nil and facility.def.facility_kind == "swing_seat"
+end
+
+---@param agent BabyAgent
+---@param facility BabyFacilityRecord
+---@param duration Fixed|nil
+function FacilityService:_begin_swing_seat(agent, facility, duration)
+    if not (facility.unit and agent.unit) then
+        Log.warn("swing seat missing unit", facility.def.id)
+        return
+    end
+    -- 锁住宝宝 AI/移动：每帧把它硬粘到摆动座椅上，避免被待机/移动动画顶掉或被 AI 抢走。
+    if agent.lock_ride_move_state then
+        agent:lock_ride_move_state()
+    end
+    -- 关掉宝宝与座椅之间的碰撞：宝宝被硬粘到座位点，开着碰撞会互相顶、把座椅推歪。下板恢复。
+    self:_set_seat_collision(agent, facility, false)
+    -- 坐姿动画 + 每帧跟随（会摆动的）座椅座位点；_seat_agent 内部分配 seat_token 并起 _sync_seat。
+    self:_seat_agent(agent, facility, duration)
+    -- 周期性给座椅施力，与跟随循环共用同一个 seat_token，令牌失效时一起停。
+    self:_drive_swing_force(agent, facility, facility.seat_token)
+    Log.info("swing seat begin", facility.def.id, "baby", agent.index, "duration", duration)
+end
+
+---开/关宝宝与座椅之间的碰撞。上座时关、离座时开。
+---@param agent BabyAgent|nil
+---@param facility BabyFacilityRecord
+---@param enable boolean
+function FacilityService:_set_seat_collision(agent, facility, enable)
+    if not (agent and agent.unit and facility.unit and GameAPI.enable_collision_between_units) then
+        return
+    end
+    pcall(function()
+        GameAPI.enable_collision_between_units(agent.unit, facility.unit, enable)
+    end)
+end
+
+---周期性给座椅施力：顺着座椅当前水平运动方向推（“泵”能量），自然越摆越高、不依赖相位。
+---接近静止（起摆/端点）时按 swing_push_dir 给一推把秋千起起来；速度超过 swing_max_speed 不再加力。
+---@param agent BabyAgent
+---@param facility BabyFacilityRecord
+---@param token integer|nil
+function FacilityService:_drive_swing_force(agent, facility, token)
+    if agent.destroyed or facility.active_agent ~= agent or facility.seat_token ~= token then
+        return
+    end
+
+    local seat = facility.unit
+    local def = facility.def
+    if seat and seat.apply_force then
+        local mag = def.swing_force_magnitude or 12.0
+        local max_speed = def.swing_max_speed or 4.0
+        local fx, fz = 0.0, 0.0
+        local v = seat.get_linear_velocity and seat.get_linear_velocity() or nil
+        local horiz = v and math.sqrt(v.x * v.x + v.z * v.z) or 0.0
+        if horiz > 0.05 then
+            -- 顺着当前运动方向推；已达上限则本拍不加力，避免越摆越飞。
+            if horiz < max_speed then
+                fx = v.x / horiz * mag
+                fz = v.z / horiz * mag
+            end
+        else
+            -- 几乎静止：按配置方向起摆。
+            local dir = self:_to_vector3(def.swing_push_dir) or math.Vector3(1.0, 0.0, 0.0)
+            fx, fz = dir.x * mag, dir.z * mag
+        end
+        if fx ~= 0.0 or fz ~= 0.0 then
+            pcall(function() seat.apply_force(math.Vector3(fx, 0.0, fz)) end)
+        end
+    end
+
+    LuaAPI.call_delay_time(def.swing_force_interval or 0.2, function()
+        self:_drive_swing_force(agent, facility, token)
+    end)
+end
+
+---@param agent BabyAgent
+---@param facility BabyFacilityRecord
+function FacilityService:_end_swing_seat(agent, facility)
+    facility.seat_token = nil    -- 令牌失效：跟随循环与施力循环下一拍自动停止
+    self:_stop_ride_anim(agent)  -- 停掉坐姿动画（与 _seat_agent 的 force_play 对应）
+    if agent and agent.unlock_ride_move_state then
+        agent:unlock_ride_move_state()
+    end
+    self:_set_seat_collision(agent, facility, true) -- 恢复碰撞
+    -- 让座椅停摆：清掉速度，避免下一个宝宝来坐时它还在乱晃。
+    local seat = facility.unit
+    if seat then
+        pcall(function()
+            if seat.set_linear_velocity then seat.set_linear_velocity(ZERO) end
+            if seat.set_angular_velocity then seat.set_angular_velocity(ZERO) end
+        end)
+    end
+    Log.info("swing seat end", facility.def.id, "baby", agent.index)
 end
 
 -- ===== 载具型设施：宝宝上车，在触发区内手动巡游 =====
@@ -972,6 +1112,8 @@ function FacilityService:end_interaction(agent, facility)
     facility.active_agent = nil
     if self:_is_vehicle(facility) then
         self:_end_vehicle_ride(agent, facility)
+    elseif self:_is_swing_seat(facility) then
+        self:_end_swing_seat(agent, facility)
     else
         self:_unseat_agent(agent, facility)
     end
@@ -1023,6 +1165,8 @@ function FacilityService:destroy()
             else
                 self:_stop_vehicle(facility.unit)
             end
+        elseif self:_is_swing_seat(facility) and facility.active_agent then
+            self:_end_swing_seat(facility.active_agent, facility)
         end
     end
     self.facilities = {}

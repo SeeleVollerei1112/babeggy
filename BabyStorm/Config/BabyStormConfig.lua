@@ -61,6 +61,14 @@ local Prefab = require("Data.Prefab")
 ---@field throw_height Fixed
 ---@field landing_offset Fixed
 ---@field landing_height Fixed
+---@field settle_min_time Fixed
+---@field settle_rest_speed Fixed
+---@field settle_rest_frames integer
+---@field settle_timeout Fixed
+---@field baby_bonk_max integer
+---@field baby_bonk_first_delay Fixed
+---@field baby_bonk_interval Fixed
+---@field baby_bonk_move_time Fixed
 
 ---@class BabyRuntimeConfig
 ---@field prefab_id integer
@@ -105,10 +113,11 @@ local Prefab = require("Data.Prefab")
 ---@field item_name string|nil
 ---@field facility_id string|nil
 ---@field facility_name string|nil
+---@field facility_names string[]|nil
 ---@field area_name string|nil
 ---@field contact_area_name string|nil
 ---@field contact_radius Fixed|nil
----@field facility_kind "swing"|"vehicle"|nil
+---@field facility_kind "swing"|"vehicle"|"swing_seat"|nil
 ---@field vehicle_drive_mode "kinematic"|"physics"|"player_bound"|nil
 ---@field vehicle_speed Fixed|nil
 ---@field vehicle_seat_offset Fixed[]|nil
@@ -141,6 +150,11 @@ local Prefab = require("Data.Prefab")
 ---@field seat_rotation Fixed[]|nil
 ---@field seat_socket integer|nil
 ---@field seat_anim_id integer|nil
+---@field seat_follow_orientation boolean|nil
+---@field swing_force_magnitude Fixed|nil
+---@field swing_push_dir Fixed[]|nil
+---@field swing_force_interval Fixed|nil
+---@field swing_max_speed Fixed|nil
 ---@field need_timeout_min_seconds integer|nil
 ---@field need_timeout_max_seconds integer|nil
 ---@field timeout_action_seconds integer|nil
@@ -245,11 +259,23 @@ Config.rps = {
     dice_names = { "手势骰子3", "手势骰子2" },
     -- 任意一个骰子到宝宝身边即可触发宝宝举起；玩家举另一个时也要进入同一范围。
     trigger_radius = 3.0,
+    -- 抛掷：脚本只把骰子“向上抛到头顶区域”（throw_duration 内走完上抛弧线），
+    -- 到顶后交还物理引擎。不再脚本旋转——翻面由玩家/宝宝起跳顶撞的真实碰撞产生。
     throw_duration = 1.8,
     throw_height = 4.0,
     landing_offset = 0.8,
-    -- 骰子约 2x2x2，枢轴在底面；随机侧面朝上时需先把枢轴抬高再恢复重力。
+    -- 骰子约 2x2x2，枢轴在底面；抛到顶后停在 ground + landing_height，再开重力自由下落。
     landing_height = 1.1,
+    -- 落地结算（轮询静止）：抛到顶后等骰子被顶完、最终落地静止才结算。
+    settle_min_time = 0.4,     -- 抛到顶后至少等这么久才开始判静止（先让它下落）。
+    settle_rest_speed = 0.3,   -- 线速度模长低于此值视为“静止”。
+    settle_rest_frames = 8,    -- 连续这么多帧都静止才算落定（防抖）。
+    settle_timeout = 8.0,      -- 兜底：超过这么久强制结算，避免卡死。
+    -- 宝宝自动顶撞：玩家侧不脚本化（玩家自己跳），宝宝侧自动走一点点再起跳顶骰子。
+    baby_bonk_max = 2,         -- 宝宝最多顶几次后停手，让骰子落地。
+    baby_bonk_first_delay = 0.15, -- 抛到顶后多久开始第一次顶（等移动系统稳定到 Stop）。
+    baby_bonk_interval = 0.6,  -- 两次顶之间的间隔（秒）。
+    baby_bonk_move_time = 0.18, -- 每次顶前朝骰子方向走位的时长（秒），制造翻面所需的偏移。
 }
 
 Config.baby = {
@@ -366,6 +392,37 @@ Config.needs = {
         seat_offset = { 1, 1.2, 1 }, -- 临时可见偏移，验证绑定后改回真实座位偏移（原 { 1, -4, 1 } Y 为负会沉到地下）
         seat_rotation = { 0, -180, 0 },
         seat_anim_id = 21013,
+    },
+    {
+        -- 新版秋千：把宝宝“绑定”到会摆动的座椅上（像绑滑板那样每帧硬粘 + 跟随朝向），
+        -- 再周期性给座椅施力让它越摆越高。与上面 winter_swing（组件自摆）是两套实现，
+        -- 二选一即可——确认本套可用后可删掉上面的 "swing" 需求。
+        id = "swing_seat",
+        resolver = "facility",
+        facility_kind = "swing_seat",
+        facility_id = "swing_seat",
+        -- 两个可互换的座椅：玩家把宝宝抱到任一座椅放下即触发，就近选空闲的那个。
+        facility_names = { "秋千座椅1", "秋千座椅2" },
+        contact_radius = 3.0, -- 放下宝宝时距座椅多近算“坐上”（XZ 水平半径）
+        action_text = "荡秋千",
+        need_text = "想要荡秋千",
+        matched_text = "去荡秋千",
+        satisfied_text = "荡完秋千了",
+        interact_begin_event = "BABY_SWING_SEAT_BEGIN",
+        interact_end_event = "BABY_SWING_SEAT_END",
+        interact_min_seconds = 15,
+        interact_max_seconds = 30,
+        -- 绑定：每帧把宝宝硬粘到座椅座位点，并跟随座椅实时朝向一起前后倾（复用 _seat_agent/_sync_seat）。
+        seat_offset = { 0, 0.5, 0 },    -- 宝宝相对座椅的座位偏移（按座椅模型微调）
+        seat_rotation = { 0, 0, 0 },    -- 在座椅朝向上叠加的固定角度偏移（度）
+        seat_follow_orientation = true, -- true=跟随座椅实时朝向（宝宝跟着秋千摆）；false=用固定 seat_rotation
+        seat_anim_id = 21013,           -- 坐姿动画（复用秋千坐姿 AnimKey）
+        -- 摆动：每隔 swing_force_interval 给座椅施一次力。顺着座椅当前运动方向推（“泵”能量），
+        -- 自然越摆越高、不依赖相位；接近静止时按 swing_push_dir 起摆；速度超过 swing_max_speed 不再加力。
+        swing_force_magnitude = 12.0,
+        swing_push_dir = { 1, 0, 0 },   -- 起摆方向（世界坐标，按秋千实际摆动轴改成 x 或 z）
+        swing_force_interval = 0.2,     -- 施力间隔（秒，必须小数）
+        swing_max_speed = 4.0,          -- 摆动水平速度上限，超过则本拍不加力，避免越摆越飞
     },
     {
         id = "baby_car",

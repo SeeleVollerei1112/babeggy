@@ -1,18 +1,18 @@
 local Class = require("BaseClass")
 local UnitUtil = require("Util.UnitUtil")
 local RoleUtil = require("Util.RoleUtil")
+local Intent = require("BabyStorm.Domain.BabyIntent")
 local Log = require("Util.Log")
 
 local State = {
     Idle = "idle",
     WaitPlayer = "wait_player",
     Ready = "ready",
-    Tossing = "tossing",
+    Tossing = "tossing",   -- 脚本把骰子向上抛到头顶区域（只控位移，不再人为旋转）
+    Settling = "settling", -- 抛到顶后交给物理：玩家/宝宝顶撞翻面，轮询到静止再结算
 }
 
 local LOCK = "rps"
-local PI = 3.14159265
-local TWO_PI = PI * 2.0
 local ZERO = math.Vector3(0.0, 0.0, 0.0)
 
 local RpsService = Class("RpsService")
@@ -41,6 +41,12 @@ function RpsService:Ctor(config, triggers)
     self.elapsed = 0.0
     self.ground_y = {}
     self.flight = {}
+    -- 落地结算（轮询静止）+ 宝宝自动顶撞用的运行时字段。
+    self.settle_elapsed = 0.0
+    self.rest_frames = 0
+    self.bonk_count = 0
+    self.bonk_timer = 0.0
+    self.pending_jump = nil
 end
 
 ---@param agents BabyAgent[]
@@ -99,6 +105,8 @@ function RpsService:update(dt)
     elseif self.state == State.Tossing then
         self.elapsed = self.elapsed + dt
         self:_drive_toss()
+    elseif self.state == State.Settling then
+        self:_update_settle(dt)
     end
 end
 
@@ -320,19 +328,16 @@ function RpsService:_prepare_die(die_index, owner_pos, other_pos, fallback_sign)
         dx, dz, length = fallback_sign, 0.0, 1.0
     end
     local offset = self.cfg.landing_offset
+    -- 抛点：自己头顶偏一点点（两颗骰子稍微错开）。落地朝向不再人为指定，
+    -- 交给后续顶撞的物理碰撞自然翻面（见 §"新方案"）。
     local target = math.Vector3(
         owner_pos.x + dx / length * offset,
         (self.ground_y[die_index] or owner_pos.y) + self.cfg.landing_height,
         owner_pos.z + dz / length * offset
     )
-    local face = self:_random_face()
-    local spin_axis, final_angle = self:_face_spin(face)
     self.flight[die_index] = {
         start = start_pos,
         target = target,
-        spin_axis = spin_axis,
-        final_angle = final_angle,
-        turns = 1,
     }
     pcall(function()
         if die.set_linear_velocity then die.set_linear_velocity(ZERO) end
@@ -357,47 +362,154 @@ function RpsService:_drive_toss()
                 start_pos.y + (target.y - start_pos.y) * t + arc,
                 start_pos.z + (target.z - start_pos.z) * t
             )
-            local angle = (flight.turns * TWO_PI + flight.final_angle) * t
-            local rot
-            if flight.spin_axis == "x" then
-                rot = math.Quaternion(angle, 0.0, 0.0)
-            else
-                rot = math.Quaternion(0.0, 0.0, angle)
-            end
+            -- 只控位移：把骰子向上抛到头顶区域。旋转交给物理顶撞，脚本不再转。
             pcall(function()
                 if die.set_position_smooth then die.set_position_smooth(pos) else die.set_position(pos) end
-                if die.set_orientation_smooth then
-                    die.set_orientation_smooth(rot)
-                elseif die.set_orientation then
-                    die.set_orientation(rot)
-                end
             end)
         end
     end
     if t >= 1.0 then
-        self:_finish_toss()
+        self:_release_to_physics()
     end
 end
 
-function RpsService:_finish_toss()
+-- 抛到顶后把两颗骰子交还物理引擎：恢复重力与碰撞，使其能被顶飞/翻面/自由落体。
+-- 不再吸附到预定朝向——朝向由后续顶撞的真实碰撞决定。随后进入 Settling 轮询静止。
+function RpsService:_release_to_physics()
     for index = 1, #self.dice do
         local die = self.dice[index]
         local flight = self.flight[index]
         if flight then
             pcall(function()
                 if die.set_position then die.set_position(flight.target) end
-                if die.set_orientation then
-                    if flight.spin_axis == "x" then
-                        die.set_orientation(math.Quaternion(flight.final_angle, 0.0, 0.0))
-                    else
-                        die.set_orientation(math.Quaternion(0.0, 0.0, flight.final_angle))
-                    end
-                end
+                if die.set_linear_velocity then die.set_linear_velocity(ZERO) end
+                if die.set_angular_velocity then die.set_angular_velocity(ZERO) end
                 if die.set_physics_active then die.set_physics_active(true) end
                 if die.enable_gravity then die.enable_gravity() end
             end)
         end
     end
+    self:_begin_settle()
+end
+
+-- 进入结算阶段：放开宝宝的移动锁，让它能自己走两步 + 起跳顶骰子；
+-- 玩家侧不脚本化，玩家自己跳。两颗骰子都静止后才结算。
+function RpsService:_begin_settle()
+    local agent = self.agent
+    if agent and not agent.destroyed then
+        -- 干净地解锁（移除 BUFF_FORBID_MOVE、恢复 move_speed），让宝宝能位移和起跳。
+        agent.action_lock:release(LOCK)
+        -- 仍保持 busy（IdleState:update 会因 busy 早退，不会抢 move_mode），
+        -- 仅把意图设为 Stop，避免 Wander 把移速压回 0 挡住顶撞用的走位。
+        agent.move_mode = Intent.MoveMode.Stop
+        agent:invalidate_systems()
+        agent:set_status("顶一下让它翻面！")
+    end
+    self.settle_elapsed = 0.0
+    self.rest_frames = 0
+    self.bonk_count = 0
+    self.bonk_timer = self.cfg.baby_bonk_first_delay
+    self.pending_jump = nil
+    self.state = State.Settling
+    Log.info("rps settling begin")
+end
+
+---@param dt Fixed
+function RpsService:_update_settle(dt)
+    self.settle_elapsed = self.settle_elapsed + dt
+
+    -- 宝宝自动顶撞：走一点点距离 → 起跳顶骰子，重复若干次后停手让它落地。
+    self:_drive_baby_bonk(dt)
+
+    -- 轮询静止：给一点缓冲时间让骰子先下落，之后连续若干帧都静止才算落定。
+    if self.settle_elapsed >= self.cfg.settle_min_time and self:_dice_at_rest() then
+        self.rest_frames = self.rest_frames + 1
+    else
+        self.rest_frames = 0
+    end
+
+    if self.rest_frames >= self.cfg.settle_rest_frames
+        or self.settle_elapsed >= self.cfg.settle_timeout
+    then
+        self:_finish_settle()
+    end
+end
+
+-- 宝宝顶撞循环：每隔 baby_bonk_interval 朝骰子方向走一小步再起跳，最多 baby_bonk_max 次。
+---@param dt Fixed
+function RpsService:_drive_baby_bonk(dt)
+    local unit = self.agent and self.agent.unit or nil
+    if not unit then
+        return
+    end
+    -- 走位后延迟一拍再起跳，做出“先挪一点再顶”的手感。
+    if self.pending_jump then
+        self.pending_jump = self.pending_jump - dt
+        if self.pending_jump <= 0.0 then
+            self.pending_jump = nil
+            if unit.ai_command_jump then
+                pcall(function() unit.ai_command_jump() end)
+            end
+        end
+    end
+
+    if self.bonk_count >= self.cfg.baby_bonk_max then
+        return
+    end
+    self.bonk_timer = self.bonk_timer - dt
+    if self.bonk_timer > 0.0 then
+        return
+    end
+    self.bonk_timer = self.cfg.baby_bonk_interval
+    self.bonk_count = self.bonk_count + 1
+
+    local dir = self:_baby_bonk_dir(unit)
+    if dir and unit.ai_command_start_move then
+        pcall(function() unit.ai_command_start_move(dir, self.cfg.baby_bonk_move_time) end)
+    end
+    self.pending_jump = self.cfg.baby_bonk_move_time
+end
+
+-- 宝宝走位方向：朝自己那颗骰子的水平方向偏移一点（贴着骰子边缘顶 → 触发翻面）。
+---@param unit Unit
+---@return Vector3|nil
+function RpsService:_baby_bonk_dir(unit)
+    local baby_pos = unit.get_position and unit.get_position() or nil
+    local die_pos = self.baby_die and self.baby_die.get_position and self.baby_die.get_position() or nil
+    if not baby_pos then
+        return nil
+    end
+    local dx, dz = 1.0, 0.0
+    if die_pos then
+        dx = die_pos.x - baby_pos.x
+        dz = die_pos.z - baby_pos.z
+    end
+    local length = math.sqrt(dx * dx + dz * dz)
+    if length < 0.1 then
+        dx, dz, length = 1.0, 0.0, 1.0
+    end
+    return math.Vector3(dx / length, 0.0, dz / length)
+end
+
+-- 两颗骰子都接近静止（线速度足够小）才算落定。玩家一直顶 → 速度不为 0 → 不结算。
+---@return boolean
+function RpsService:_dice_at_rest()
+    local eps = self.cfg.settle_rest_speed
+    for index = 1, #self.dice do
+        local die = self.dice[index]
+        local v = die.get_linear_velocity and die.get_linear_velocity() or nil
+        if not v then
+            return false
+        end
+        local speed_sq = v.x * v.x + v.y * v.y + v.z * v.z
+        if speed_sq > eps * eps then
+            return false
+        end
+    end
+    return true
+end
+
+function RpsService:_finish_settle()
     local agent = self.agent
     local role = self.role
     self:_release_agent()
@@ -405,26 +517,7 @@ function RpsService:_finish_toss()
     if agent and not agent.destroyed then
         agent:finish_rps(role)
     end
-    Log.info("rps toss finished")
-end
-
----@return integer
-function RpsService:_random_face()
-    if GameAPI and GameAPI.random_int then
-        return GameAPI.random_int(1, 6)
-    end
-    return math.tointeger(LuaAPI.rand() % 6) + 1
-end
-
----@param face integer
----@return "x"|"z", Fixed
-function RpsService:_face_spin(face)
-    if face == 2 then return "x", PI end
-    if face == 3 then return "x", PI * 0.5 end
-    if face == 4 then return "x", -PI * 0.5 end
-    if face == 5 then return "z", PI * 0.5 end
-    if face == 6 then return "z", -PI * 0.5 end
-    return "x", 0.0
+    Log.info("rps settle finished")
 end
 
 ---@param unit Unit|nil
@@ -473,6 +566,11 @@ function RpsService:_clear_session()
     self.baby_missing_elapsed = 0.0
     self.elapsed = 0.0
     self.flight = {}
+    self.settle_elapsed = 0.0
+    self.rest_frames = 0
+    self.bonk_count = 0
+    self.bonk_timer = 0.0
+    self.pending_jump = nil
 end
 
 function RpsService:_abort()
