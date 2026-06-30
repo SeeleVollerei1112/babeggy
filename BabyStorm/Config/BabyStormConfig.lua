@@ -277,6 +277,12 @@ Config.baby = {
     reject_hold_delay = 1.0,  -- 捡到错误物品后，拿在手上多久再丢出去（秒）；call_delay_time 需要 Fixed，必须写成小数
     reject_throw_delay = 2.0, -- 丢掉错误物品到表现不满意之间的间隔（秒）；call_delay_time 需要 Fixed，必须写成小数
     status_height = 1.5,
+    -- 捣乱（Mischief）：当前需求倒计时剩余 <= 此阈值（秒）且宝宝仍在 Idle 等待时，
+    -- 主动跑到就近一个点做一次“打翻东西”的捣乱动作，随后回到 Idle 继续等到超时哭闹。
+    -- 每个需求只捣乱一次（choose_next_need 时重置），不会刷屏。
+    mischief_threshold_seconds = 8,
+    mischief_seek_timeout = 4.0, -- 走向捣乱点的兜底超时（秒，必须小数）：超时直接就地开始动作
+    mischief_act_seconds = 1.5,  -- 打翻动作持续时长（秒，必须小数）：期间停步 + 动作锁
 }
 
 Config.scoring = {

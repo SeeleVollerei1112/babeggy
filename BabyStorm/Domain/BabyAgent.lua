@@ -105,6 +105,8 @@ function BabyAgent:Ctor(index, unit, services, config)
     self.active_facility = nil
 
     self._hold_remaining = 0.0
+    -- 每个需求是否已捣乱过（捣乱一次后置 true，choose_next_need 重置）。
+    self._mischief_done = false
     self.destroyed = false
 end
 
@@ -158,6 +160,8 @@ function BabyAgent:update(dt)
                 self:set_status(self:_format_need_countdown(self.need_runtime:get_remaining()))
             end
         end
+        -- 倒计时低于阈值时主动捣乱（每个需求仅一次，仅在 Idle 等待时）。
+        self:_maybe_start_mischief()
     end
 
     -- 2. 放下冻结计时
@@ -219,6 +223,7 @@ end
 
 function BabyAgent:choose_next_need()
     self:cancel_need_countdown()
+    self._mischief_done = false
     self.current_need = self.services.need:take()
     if not self.current_need then
         self.view_model:set_need(nil)
@@ -303,6 +308,28 @@ function BabyAgent:get_timeout_action_seconds()
         seconds = 1
     end
     return seconds
+end
+
+---@private
+-- 倒计时低于阈值且宝宝仍在 Idle 等待时，触发一次捣乱（每个需求仅一次）。
+-- 捣乱是「等待期间的扰动」：只在 Idle 触发，不打断寻物/设施/被抱等正在进行的流程；
+-- 捣乱结束回到 Idle，需求倒计时继续走，最终仍会超时哭闹。
+function BabyAgent:_maybe_start_mischief()
+    if self._mischief_done then
+        return
+    end
+    if not self:is_in_state(Enum.BabyState.Idle) then
+        return
+    end
+    local threshold = self.config.baby.mischief_threshold_seconds or 0
+    if threshold <= 0 then
+        return
+    end
+    if self.need_runtime:get_remaining() > threshold then
+        return
+    end
+    self._mischief_done = true
+    self:enter_state(Enum.BabyState.Mischief, nil, true)
 end
 
 -- ============================================================
@@ -401,6 +428,8 @@ function BabyAgent:_new_state(state_id)
         cls = require("BabyStorm.Domain.State.UpsetState")
     elseif state_id == Enum.BabyState.Cry then
         cls = require("BabyStorm.Domain.State.CryState")
+    elseif state_id == Enum.BabyState.Mischief then
+        cls = require("BabyStorm.Domain.State.MischiefState")
     else
         cls = require("BabyStorm.Domain.State.StateBase")
     end
