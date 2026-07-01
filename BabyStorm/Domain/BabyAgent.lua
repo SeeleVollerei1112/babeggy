@@ -716,20 +716,36 @@ function BabyAgent:finish_ball_rally(role, catches)
     self:enter_state(Enum.BabyState.Satisfied, { reason = "ball_rally" }, true)
 end
 
--- 猜拳只结算“共同完成一次抛骰”，不判断石头剪刀布胜负。
+-- 猜拳需求的基础满足是"宝宝举起自己的骰子"；配对+抛骰+顶撞+落地判胜负是额外加分项，不强制玩家参与。
+-- outcome（玩家视角）：
+--   "win"/"draw"/"lose" —— 双方跑完抛骰、骰子干净落面判出胜负，按分档追加加分。
+--   nil —— 玩家未响应的独自满足（见 _finish_solo_satisfy），或没干净落面无法判胜负，只给基础满足分。
 ---@param role Role|nil
-function BabyAgent:finish_rps(role)
+---@param outcome "win"|"draw"|"lose"|nil
+function BabyAgent:finish_rps(role, outcome)
     if self.destroyed then
         return
     end
     self.last_role = role
     self.services.score:award_satisfied(role)
+    if outcome then
+        self.services.score:award_rps_result(role, outcome)
+    end
     if self.services.difficulty then
         self.services.difficulty:on_baby_satisfied(self)
     end
+    -- 胜负文案从“玩家视角”翻成宝宝的表现：玩家赢=宝宝输了不服气、玩家输=宝宝赢了得意、平局。
+    local status_text = (self.current_need and self.current_need.satisfied_text) or "猜拳完成啦"
+    if outcome == "win" then
+        status_text = "哼，这局你赢啦～"
+    elseif outcome == "lose" then
+        status_text = "耶！我赢啦！"
+    elseif outcome == "draw" then
+        status_text = "平局，再来一次嘛～"
+    end
     self:enter_state(Enum.BabyState.Satisfied, {
         reason = "rps",
-        status_text = (self.current_need and self.current_need.satisfied_text) or "猜拳完成啦",
+        status_text = status_text,
     }, true)
 end
 

@@ -56,6 +56,40 @@ function ScoreService:award_ball_bonus(role, catches)
     end
 end
 
+---猜拳玩法额外加分：基础满足分之外，按落地判出的“玩家视角”胜负分档追加
+---（win/draw/lose 对应 rps_win_score/rps_draw_score/rps_lose_score）。
+---outcome 为 nil（未响应的独自满足、或没干净落面无法判胜负）时不调用本函数。
+---@param role Role|nil
+---@param outcome "win"|"draw"|"lose"
+function ScoreService:award_rps_result(role, outcome)
+    local scoring = self.config.scoring
+    local bonus, label
+    if outcome == "win" then
+        bonus, label = scoring.rps_win_score or 0, "猜拳赢了 +"
+    elseif outcome == "draw" then
+        bonus, label = scoring.rps_draw_score or 0, "猜拳平局 +"
+    else
+        bonus, label = scoring.rps_lose_score or 0, "猜拳输了 +"
+    end
+    if bonus <= 0 then
+        return
+    end
+
+    local session = self.sessions and self.sessions:find(role) or nil
+    if session then
+        session.score_awarded = session.score_awarded + bonus
+    end
+
+    if role and role.add_score then
+        role.add_score(bonus)
+        if role.show_tips then
+            role.show_tips(label .. tostring(bonus), 2.0)
+        end
+    elseif GlobalAPI and GlobalAPI.show_tips then
+        GlobalAPI.show_tips(label .. tostring(bonus), 2.0)
+    end
+end
+
 ---@param role Role|nil
 function ScoreService:penalize_wrong(role)
     local penalty = self.config.scoring.wrong_item_penalty

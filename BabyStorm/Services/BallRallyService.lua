@@ -18,7 +18,8 @@ local State = {
 ---@field triggers TriggerRegistry
 ---@field sessions PlayerSessionRegistry|nil
 ---@field agents BabyAgent[]|nil
----@field ball Obstacle|Unit|nil
+---@field balls (Obstacle|Unit)[] 场上所有可用沙滩球（空转时逐颗扫描）
+---@field ball Obstacle|Unit|nil 当前会话接管的那颗球（开局时从 balls 里就近选定）
 ---@field server BabyAgent|nil
 ---@field role Role|nil
 ---@field player LifeEntity|Character|nil
@@ -71,10 +72,10 @@ end
 local function ease_out_in(s, hang)
     local shaped
     if s < 0.5 then
-        shaped = s * (2.0 - 2.0 * s)       -- 前半段 ease-out：起手快
+        shaped = s * (2.0 - 2.0 * s) -- 前半段 ease-out：起手快
     else
         local k = 2.0 * s - 1.0
-        shaped = 0.5 + 0.5 * k * k          -- 后半段 ease-in：落地快
+        shaped = 0.5 + 0.5 * k * k -- 后半段 ease-in：落地快
     end
     return s + (shaped - s) * (hang or 0.0)
 end
@@ -105,6 +106,7 @@ function BallRallyService:Ctor(config, triggers, sessions)
     self.triggers = triggers
     self.sessions = sessions
     self.agents = nil
+    self.balls = {}
     self.ball = nil
     self.server = nil
     self.role = nil
@@ -136,19 +138,30 @@ function BallRallyService:start(agents)
     end
 
     self.agents = agents
-    self.ball = LuaAPI.query_unit(cfg.ball_name)
     self.role, self.player = self:_first_player()
 
-    if not self.ball then
-        Log.warn("ball rally missing ball", cfg.ball_name)
+    -- 解析配置里的每一颗球；缺哪颗只告警跳过，只要还有至少一颗可用就照常开服。
+    self.balls = {}
+    for index = 1, #cfg.ball_names do
+        local name = cfg.ball_names[index]
+        local ball = LuaAPI.query_unit(name)
+        if ball then
+            self.balls[#self.balls + 1] = ball
+            self:_configure_ball(ball)
+        else
+            Log.warn("ball rally missing ball", name)
+        end
+    end
+
+    if #self.balls == 0 then
+        Log.warn("ball rally no balls available")
         return false
     end
 
-    self:_configure_ball()
     self:_register_events()
 
     self.state = State.Disabled
-    Log.info("ball rally ready (need-driven)", cfg.ball_name)
+    Log.info("ball rally ready (need-driven)", #self.balls, "balls")
     return true
 end
 
@@ -171,8 +184,9 @@ function BallRallyService:_first_player()
     return selected_role, player
 end
 
-function BallRallyService:_configure_ball()
-    local ball = self.ball
+---@param ball Obstacle|Unit|nil 默认配置当前会话球；开服时逐颗传入
+function BallRallyService:_configure_ball(ball)
+    ball = ball or self.ball
     if not ball then
         return
     end
@@ -182,9 +196,13 @@ function BallRallyService:_configure_ball()
     if ball.set_physics_active then
         pcall(function() ball.set_physics_active(true) end)
     end
-    -- 运动学驱动：全程关闭引擎重力，轨迹完全由 _drive_ball_kinematic 控制。
-    if ball.disable_gravity then
-        pcall(function() ball.disable_gravity() end)
+    -- 空转/待命时保持重力开启，让球自然落地静止。
+    -- （此前这里关掉重力做“运动学待命”，但 physics_active + 无重力时，
+    --  球一旦与地面/围栏轻微穿插，引擎每帧把它往外顶又没有重力拉回 → 一直缓缓上飘。
+    --  真正的运动学飞行会在 _begin_kinematic_flight / _begin_hold / _begin_celebrate
+    --  各自临时关重力，落地收尾再交还给这里的重力，不依赖本函数关重力。）
+    if ball.enable_gravity then
+        pcall(function() ball.enable_gravity() end)
     end
     if ball.enable_unit_ccd then
         pcall(function() ball.enable_unit_ccd() end)
@@ -196,16 +214,21 @@ function BallRallyService:_register_events()
     if self._events_registered then
         return
     end
-    if not (self.ball and self.player) then
+    if not (#self.balls > 0 and self.player) then
         return
     end
     self._events_registered = true
 
-    self.triggers:unit(self.ball, { EVENT.SPEC_OBSTACLE_LIFTED_END }, function()
-        if self.state == State.WaitRelease then
-            self.pending_launch = true
-        end
-    end)
+    -- 每颗球各自注册“被放下”事件；只有当放下的是当前会话接管的那颗球、且正处于等待
+    -- 发球（WaitRelease）时才触发发射，避免另一颗闲置球被人举放时误触发。
+    for index = 1, #self.balls do
+        local ball = self.balls[index]
+        self.triggers:unit(ball, { EVENT.SPEC_OBSTACLE_LIFTED_END }, function()
+            if self.state == State.WaitRelease and self.ball == ball then
+                self.pending_launch = true
+            end
+        end)
+    end
 
     -- 玩家起跳只负责“开窗”；是否顶到由落点盒判定（见 _try_player_volley），
     -- 不再依赖球与玩家的物理碰撞，避免落点漂移导致接不到。
@@ -272,27 +295,41 @@ function BallRallyService:update(dt)
     end
 end
 
--- 空转时扫描：找到一个「正空闲且持玩沙滩球需求」的宝宝，且自由静止的球在其触发半径内，即开局。
+-- 空转时扫描：逐颗遍历场上的球，只要某颗“自由静止”的球触发半径内有「空闲且持玩沙滩球需求」
+-- 的宝宝，就用这颗球开局。多颗球时就近命中哪颗用哪颗。
 function BallRallyService:_scan_for_session()
-    if not (self.ball and self.agents) then
+    if not self.agents then
         return
     end
-    -- 球被举着（玩家/宝宝手里）时不抢，只接管自由静止的球。
-    if self.ball.is_lifted_status then
-        local ok, lifted = pcall(function() return self.ball.is_lifted_status() end)
-        if ok and lifted then
-            return
+    for index = 1, #self.balls do
+        local ball = self.balls[index]
+        if self:_ball_is_free(ball) then
+            local ball_pos = ball.get_position and ball.get_position() or nil
+            if ball_pos then
+                local agent = self:_find_ball_need_agent(ball_pos)
+                if agent then
+                    self:_begin_session(agent, ball)
+                    return
+                end
+            end
         end
     end
-    local ball_pos = self.ball.get_position and self.ball.get_position() or nil
-    if not ball_pos then
-        return
-    end
+end
 
-    local agent = self:_find_ball_need_agent(ball_pos)
-    if agent then
-        self:_begin_session(agent)
+-- 球是否处于“自由静止可接管”状态：没有被玩家/宝宝举着。
+---@param ball Obstacle|Unit|nil
+---@return boolean
+function BallRallyService:_ball_is_free(ball)
+    if not ball then
+        return false
     end
+    if ball.is_lifted_status then
+        local ok, lifted = pcall(function() return ball.is_lifted_status() end)
+        if ok and lifted then
+            return false
+        end
+    end
+    return true
 end
 
 ---@param ball_pos Vector3
@@ -320,12 +357,14 @@ function BallRallyService:_find_ball_need_agent(ball_pos)
     return nil
 end
 
--- 接管指定宝宝，开始一局顶球（一次性会话；漏接即在 _settle_session 收尾）。
+-- 接管指定宝宝，用选定的球开始一局顶球（一次性会话；漏接即在 _settle_session 收尾）。
 ---@param agent BabyAgent
-function BallRallyService:_begin_session(agent)
-    if not (agent and agent.unit and self.ball) then
+---@param ball Obstacle|Unit
+function BallRallyService:_begin_session(agent, ball)
+    if not (agent and agent.unit and ball) then
         return
     end
+    self.ball = ball
     if not (self.role and self.player) then
         self.role, self.player = self:_first_player()
         self:_register_events()
@@ -863,7 +902,7 @@ function BallRallyService:_show_landing_marker(first)
     if not self.target then
         return
     end
-    local y = self.cfg.floor_y + 0.08
+    local y = self.cfg.floor_y + 1.0
     local target = self.target
     local marker_pos = math.Vector3(target.x, y, target.z)
 
@@ -963,9 +1002,9 @@ function BallRallyService:_settle_session(reason)
         agent:finish_ball_rally(self.role, catches)
     end
 
-    -- 球收尾：恢复引擎重力让它自然落地停住——否则运动学期间关掉的重力会让球悬在半空
+    -- 球收尾：恢复引擎重力让它自然落地停住——否则飞行期间临时关掉的重力会让球悬在半空
     -- （用户反馈“球靠在围栏上飘起来”）。被举着的球上面已让宝宝放下；漏接的球清零速度原地落下。
-    -- 下一局开局 _configure_ball 会再次关重力。
+    -- 空转期间球始终保持重力开启（见 _configure_ball），不会再上飘。
     local ball = self.ball
     if ball then
         pcall(function()
@@ -982,11 +1021,21 @@ function BallRallyService:_settle_session(reason)
             end
         end)
     end
+    -- 本局用过的球交还给空转池；下一次扫描会重新在所有球里就近挑选。
+    self.ball = nil
 end
 
 function BallRallyService:destroy()
     self:_destroy_landing_indicator()
     self:_set_collision(self.player, true)
+    -- 兜底恢复所有球的物理与重力，避免销毁时把球留在关重力/半空状态。
+    for index = 1, #self.balls do
+        local ball = self.balls[index]
+        pcall(function()
+            if ball.set_physics_active then ball.set_physics_active(true) end
+            if ball.enable_gravity then ball.enable_gravity() end
+        end)
+    end
     if self.server and self.server.unit then
         self:_set_collision(self.server.unit, true)
         self.server.action_lock:release(RALLY_LOCK)
@@ -996,6 +1045,8 @@ function BallRallyService:destroy()
     end
     self.state = State.Disabled
     self.server = nil
+    self.ball = nil
+    self.balls = {}
     self.agents = nil
     self.pending_launch = false
     Log.info("ball rally destroyed")

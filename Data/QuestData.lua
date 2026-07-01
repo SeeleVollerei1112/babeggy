@@ -8,27 +8,14 @@ return {
 		rewards = {},
 		tasks = {
 			{
-				context = "举起宝宝蛋",
+				context = "举起想要吃东西的宝宝蛋",
 				id = 1,
 				startEvent = "",
 				targets = {
 					{
 						finishEvent = "",
 						id = 1,
-						triggerEvent = "TASK_LIFT_BABY",
-						type = 1,
-					},
-				},
-			},
-			{
-				context = "将宝宝蛋带到想要去的地方并放下",
-				id = 15,
-				startEvent = "",
-				targets = {
-					{
-						finishEvent = "",
-						id = 1,
-						triggerEvent = "TASK_DELIVER_BABY_TO_FACILITY",
+						triggerEvent = "TASK_LIFT_BABY_WANTS_ITEM",
 						type = 1,
 					},
 				},
@@ -47,33 +34,33 @@ return {
 				},
 			},
 			{
-				context = "宝宝挑选物品中",
-				id = 6,
-				startEvent = "",
-				targets = {
-					{
-						finishEvent = "",
-						id = 1,
-						triggerEvent = "TASK_BABY_PICK_ITEM",
-						type = 1,
-					},
-				},
-			},
-			{
-				context = "是宝宝想要的吗?",
+				context = "是宝宝想要的物品吗?",
 				id = 9,
 				startEvent = "",
 				targets = {
 					{
 						finishEvent = "",
 						id = 1,
-						triggerEvent = "TASK_BABY_SATISFIED",
+						triggerEvent = "TASK_BABY_SATISFIED_ITEM",
 						type = 1,
 					},
 					{
 						finishEvent = "",
 						id = 2,
 						triggerEvent = "TASK_BABY_WRONG_ITEM",
+						type = 1,
+					},
+				},
+			},
+			{
+				context = "不是宝宝想要的物品",
+				id = 26,
+				startEvent = "",
+				targets = {
+					{
+						finishEvent = "",
+						id = 1,
+						triggerEvent = "TASK_BABY_NOT_WANTED_ITEM",
 						type = 1,
 					},
 				},
@@ -99,7 +86,46 @@ return {
 					{
 						finishEvent = "",
 						id = 1,
-						triggerEvent = "",
+						triggerEvent = "TASK_BABY_HAPPY",
+						type = 1,
+					},
+				},
+			},
+			{
+				context = "举起想要去玩的宝宝蛋",
+				id = 25,
+				startEvent = "",
+				targets = {
+					{
+						finishEvent = "",
+						id = 1,
+						triggerEvent = "TASK_LIFT_BABY_WANTS_FACILITY",
+						type = 1,
+					},
+				},
+			},
+			{
+				context = "将宝宝蛋带到想要去的地方并放下",
+				id = 15,
+				startEvent = "",
+				targets = {
+					{
+						finishEvent = "",
+						id = 1,
+						triggerEvent = "TASK_DELIVER_BABY_TO_FACILITY",
+						type = 1,
+					},
+				},
+			},
+			{
+				context = "是宝宝想要去玩的地方吗?",
+				id = 29,
+				startEvent = "",
+				targets = {
+					{
+						finishEvent = "",
+						id = 1,
+						triggerEvent = "TASK_BABY_SATISFIED_FACILITY",
 						type = 1,
 					},
 				},
