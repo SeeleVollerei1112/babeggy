@@ -49,6 +49,12 @@ function InteractingFacilityState:enter(context)
         return
     end
 
+    -- 婴儿床：躺床后玩家取物 + 长按换洗，全程由 CribService 驱动结算（完成/歪床），
+    -- 不按时长自动完成。状态文案已由 CribService:begin_session 设成对应子需求。
+    if agent.services.facility:is_crib(facility) then
+        return
+    end
+
     LuaAPI.call_delay_time(duration, function()
         if agent:is_in_state(agent.enum.BabyState.InteractingFacility) then
             agent:complete_facility_interaction(facility)

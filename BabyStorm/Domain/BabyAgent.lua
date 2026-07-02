@@ -676,6 +676,21 @@ function BabyAgent:complete_facility_interaction(facility)
     self:enter_state(Enum.BabyState.Satisfied, { facility = facility }, true)
 end
 
+-- 设施交互失败/被打断（如婴儿床 15 秒无人换洗被宝宝弄歪）：结束交互、宝宝离开设施，
+-- 重新计时当前需求（宝宝仍想被照顾，可再尝试/超时哭闹），随后走一遍不满意表现回 Idle。
+---@param facility BabyFacilityRecord|nil
+function BabyAgent:fail_facility_interaction(facility)
+    if self.destroyed or not facility then
+        return
+    end
+    self.services.facility:end_interaction(self, facility)
+    self.active_facility = nil
+    if self.current_need then
+        self.need_runtime:start(self:get_need_timeout_seconds())
+    end
+    self:enter_upset({ reason = "facility_interrupted" })
+end
+
 ---@param facility BabyFacilityRecord|nil
 function BabyAgent:finish_facility_satisfied(facility)
     if self.destroyed then

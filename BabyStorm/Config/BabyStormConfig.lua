@@ -77,6 +77,32 @@ local Prefab = require("Data.Prefab")
 ---@field giveup_wander_max Fixed
 ---@field giveup_move_interval Fixed
 
+---@class BabyCribSubType
+---@field key string
+---@field item_prefab integer
+---@field hold_socket string|nil
+---@field hold_offset Fixed[]|nil
+---@field hold_scale Fixed[]|nil
+---@field need_text string
+---@field action_text string
+---@field satisfied_text string
+---@field duration_seconds Fixed
+---@field complete_event string
+
+---@class BabyCribConfig
+---@field enabled boolean
+---@field cabinet_pos Fixed[]
+---@field cabinet_show_radius Fixed
+---@field progress_show_radius Fixed
+---@field poll_interval Fixed
+---@field progress_max integer
+---@field reset_progress_max integer
+---@field reset_duration_seconds Fixed
+---@field idle_tilt_seconds Fixed
+---@field tilt_axis "x"|"z"
+---@field tilt_degrees Fixed
+---@field reset_complete_event string
+---@field sub_types BabyCribSubType[]
 ---@class BabyRuntimeConfig
 ---@field prefab_id integer
 ---@field count integer
@@ -127,7 +153,7 @@ local Prefab = require("Data.Prefab")
 ---@field area_name string|nil
 ---@field contact_area_name string|nil
 ---@field contact_radius Fixed|nil
----@field facility_kind "swing"|"vehicle"|"swing_seat"|nil
+---@field facility_kind "swing"|"vehicle"|"swing_seat"|"crib"|nil
 ---@field vehicle_drive_mode "kinematic"|"physics"|"player_bound"|nil
 ---@field vehicle_speed Fixed|nil
 ---@field vehicle_seat_offset Fixed[]|nil
@@ -177,6 +203,7 @@ local Prefab = require("Data.Prefab")
 ---@field difficulty BabyDifficultyConfig
 ---@field ball_rally BabyBallRallyConfig
 ---@field rps BabyRpsConfig
+---@field crib BabyCribConfig
 ---@field needs BabyNeedDef[]
 
 ---@type BabyStormConfig
@@ -313,6 +340,47 @@ Config.rps = {
     giveup_move_interval = 2.0,   -- 每隔多久换一个随机目标点（秒），做出到处走动的效果。
 }
 
+Config.crib = {
+    enabled = true,
+    -- 尿布柜是静态装饰单位，运行时按这个世界坐标做 HUD 显隐距离判定。
+    cabinet_pos = { -157.339, 2.555, 6.502 },
+    cabinet_show_radius = 4.0,
+    progress_show_radius = 4.0,
+    poll_interval = 0.2,
+    progress_max = 100,
+    reset_progress_max = 100,
+    reset_duration_seconds = 3.0,
+    idle_tilt_seconds = 25.0,
+    tilt_axis = "z",
+    tilt_degrees = 22.0,
+    reset_complete_event = "BABY_CRIB_RESET_COMPLETE",
+    sub_types = {
+        {
+            key = "diaper",
+            item_prefab = (Prefab.unit and Prefab.unit["尿布"]) or 1073745932,
+            hold_socket = "socket_hand_r",
+            hold_offset = { 0, 0, 0 },
+            hold_scale = { 0.3, 0.3, 0.3 },
+            need_text = "要换尿布啦",
+            action_text = "换尿布",
+            satisfied_text = "换好尿布啦~",
+            duration_seconds = 8.0,
+            complete_event = "BABY_CRIB_DIAPER_COMPLETE",
+        },
+        {
+            key = "tissue",
+            item_prefab = (Prefab.unit and Prefab.unit["纸巾"]) or 1073737845,
+            hold_socket = "socket_hand_r",
+            hold_offset = { 0, 0, 0 },
+            hold_scale = { 0.3, 0.3, 0.3 },
+            need_text = "要擦屁屁啦",
+            action_text = "擦屁股",
+            satisfied_text = "擦干净啦~",
+            duration_seconds = 5.0,
+            complete_event = "BABY_CRIB_TISSUE_COMPLETE",
+        },
+    },
+}
 Config.baby = {
     prefab_id = (Prefab.character and Prefab.character["宝宝蛋"]) or 1073741937,
     count = 3,
@@ -445,6 +513,29 @@ Config.needs = {
         swing_push_dir = { 1, 0, 0 }, -- 起摆方向（世界坐标，按秋千实际摆动轴改成 x 或 z）
         swing_force_interval = 0.2,   -- 施力间隔（秒，必须小数）
         swing_max_speed = 4.0,        -- 摆动水平速度上限，超过则本拍不加力，避免越摆越飞
+    },
+    {
+        -- 婴儿床：玩家把宝宝抱到床上放下 → 躺姿(动作49)绑床 → 随机弹出「换尿布/擦屁股」子需求。
+        -- 玩家去尿布柜取对应道具、走到床边长按 progress_btn 换洗完成。整个玩法由 CribService 驱动，
+        -- 这里只声明它是一条 crib 型设施需求（放下即触发、就近选空闲的一张床）。
+        id = "crib_care",
+        resolver = "facility",
+        facility_kind = "crib",
+        facility_id = "crib",
+        -- 两张可互换的婴儿床：抱到任一张放下即触发，就近选空闲（未歪、未被占用）的那张。
+        facility_names = { "儿童单人床0", "儿童单人床1" },
+        contact_radius = 3.0, -- 放下宝宝时距床多近算“放上床”（XZ 水平半径）
+        action_text = "上婴儿床",
+        need_text = "想上婴儿床",
+        matched_text = "抱上婴儿床",
+        satisfied_text = "舒服多啦~",
+        interact_begin_event = "BABY_CRIB_BEGIN",
+        interact_end_event = "BABY_CRIB_END",
+        -- 躺床姿势：复用 _seat_agent 每帧硬粘到床面 + force_play 保持躺姿动作。
+        seat_offset = { 0, 0.4, 0 },     -- 宝宝相对床的躺位偏移（按床模型微调，绑到床“底面中心”上方）
+        seat_rotation = { 0, 0, 0 },     -- 在床朝向上叠加的固定角度偏移（度）；宝宝朝向与床一致
+        seat_follow_orientation = true,  -- true=朝向跟随床（与床方向一致），可叠加 seat_rotation
+        seat_anim_id = 49,               -- 躺姿动作 id（不循环由 force_play 保持）；若 49 压不住待机可换成躺姿 AnimKey
     },
     {
         id = "baby_car",

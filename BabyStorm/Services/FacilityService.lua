@@ -33,6 +33,26 @@ function FacilityService:Ctor(config)
     self.facilities = {}
     self.seat_token = 0
     self.is_baby_unit = nil
+    self.crib_service = nil
+end
+
+---注入 CribService：crib 型设施的换尿布/擦屁股玩法（UI、取物、长按、歪床）由它驱动。
+---@param service CribService
+function FacilityService:set_crib_service(service)
+    self.crib_service = service
+end
+
+---@param kind string
+---@return BabyFacilityRecord[]
+function FacilityService:get_facilities_by_kind(kind)
+    local result = {}
+    for index = 1, #self.facilities do
+        local facility = self.facilities[index]
+        if facility.def and facility.def.facility_kind == kind then
+            result[#result + 1] = facility
+        end
+    end
+    return result
 end
 
 ---@param resolver NeedResolver
@@ -105,6 +125,12 @@ function FacilityService:_register_facility_unit(need, facility_name)
     }
     self.facilities[#self.facilities + 1] = facility
     return facility
+end
+
+---@param facility BabyFacilityRecord|nil
+---@return boolean
+function FacilityService:is_crib(facility)
+    return facility ~= nil and facility.def ~= nil and facility.def.facility_kind == "crib"
 end
 
 ---@param facility BabyFacilityRecord|nil
@@ -348,8 +374,9 @@ function FacilityService:_configure_facility_unit(unit, need)
         return
     end
 
-    -- 载具/秋千座椅不挂玩家互动按钮：交互由“玩家把宝宝抱来放下”触发，避免玩家自己按键。
-    if need.facility_kind == "vehicle" or need.facility_kind == "swing_seat" then
+    -- 载具/秋千座椅/婴儿床不挂玩家互动按钮：交互由“玩家把宝宝抱来放下”触发，避免玩家自己按键。
+    -- 婴儿床的取物/换洗/扶正都走 CribService 的场景 UI，同样不需要单位自带的互动按钮。
+    if need.facility_kind == "vehicle" or need.facility_kind == "swing_seat" or need.facility_kind == "crib" then
         return
     end
 
@@ -415,7 +442,9 @@ function FacilityService:nearest_match(pos, need, baby_unit)
     local best_dist = nil
     for index = 1, #self.facilities do
         local facility = self.facilities[index]
-        if self.resolver and self.resolver:item_matches_need(facility, need) and not facility.active_agent then
+        -- 歪掉的婴儿床（crib_tilted）在扶正前不可再放宝宝：跳过它，就近选另一张可用的床。
+        if self.resolver and self.resolver:item_matches_need(facility, need)
+            and not facility.active_agent and not facility.crib_tilted then
             -- 只有显式配置的近身接触区能触发交互。area 可能是滑板的整个巡游范围，
             -- 不能把它当接触区，否则宝宝在区域任意位置都会被远距离送上设施。
             if facility.contact_area and self:_unit_in_area(baby_unit, facility.contact_area) then
@@ -479,6 +508,8 @@ function FacilityService:begin_interaction(agent, facility)
         self:_begin_vehicle_ride(agent, facility, duration)
     elseif self:_is_swing_seat(facility) then
         self:_begin_swing_seat(agent, facility, duration)
+    elseif self:is_crib(facility) then
+        self:_begin_crib(agent, facility)
     else
         self:_seat_agent(agent, facility, duration)
     end
@@ -687,6 +718,52 @@ function FacilityService:_end_swing_seat(agent, facility)
         end)
     end
     Log.info("swing seat end", facility.def.id, "baby", agent.index)
+end
+
+-- ===== 婴儿床：宝宝躺床（绑床 + 躺姿动作），换尿布/擦屁股玩法交给 CribService =====
+-- 与秋千座椅同一套“硬粘 + 强制播放动作”骨架（复用 _seat_agent/_sync_seat），只是：
+--   1) 播躺姿动作（seat_anim_id=49），朝向与床一致；
+--   2) 锁移动、关碰撞，避免宝宝被待机顶掉或把床顶歪；
+--   3) 起完后把会话交给 CribService（弹柜UI取物 → 床边长按换洗 → 完成/歪床）。
+-- 结束（完成或被歪床打断）由 CribService 通过 agent 回调 end_interaction，走到 _end_crib 收尾。
+
+---@param agent BabyAgent
+---@param facility BabyFacilityRecord
+function FacilityService:_begin_crib(agent, facility)
+    if not (facility.unit and agent.unit) then
+        Log.warn("crib missing unit", facility.def.id)
+        return
+    end
+    -- 锁住宝宝 AI/移动：每帧把它硬粘到床上，避免被待机/移动动画顶掉或被 AI 抢走。
+    if agent.lock_ride_move_state then
+        agent:lock_ride_move_state()
+    end
+    -- 关掉宝宝与床之间的碰撞：宝宝被硬粘到躺位，开着碰撞会互相顶、把床推歪。离床恢复。
+    self:_set_seat_collision(agent, facility, false)
+    -- 躺姿动作 + 每帧跟随床躺位（复用 _seat_agent：分配 seat_token 并起 _sync_seat）。
+    self:_seat_agent(agent, facility, nil)
+    -- 把换尿布/擦屁股玩法交给 CribService 驱动（子需求随机、取物、长按、歪床、扶正）。
+    if self.crib_service then
+        self.crib_service:begin_session(agent, facility)
+    else
+        Log.warn("crib service missing", facility.def.id)
+    end
+    Log.info("crib begin", facility.def.id, "baby", agent.index)
+end
+
+---@param agent BabyAgent
+---@param facility BabyFacilityRecord
+function FacilityService:_end_crib(agent, facility)
+    facility.seat_token = nil     -- 令牌失效：躺位跟随循环下一拍自动停止
+    self:_stop_ride_anim(agent)   -- 停躺姿动作（与 _seat_agent 的 force_play 对应）
+    if agent and agent.unlock_ride_move_state then
+        agent:unlock_ride_move_state()
+    end
+    self:_set_seat_collision(agent, facility, true) -- 恢复碰撞
+    if self.crib_service then
+        self.crib_service:end_session(agent, facility)
+    end
+    Log.info("crib end", facility.def.id, "baby", agent.index)
 end
 
 -- ===== 载具型设施：宝宝上车，在触发区内手动巡游 =====
@@ -1114,6 +1191,8 @@ function FacilityService:end_interaction(agent, facility)
         self:_end_vehicle_ride(agent, facility)
     elseif self:_is_swing_seat(facility) then
         self:_end_swing_seat(agent, facility)
+    elseif self:is_crib(facility) then
+        self:_end_crib(agent, facility)
     else
         self:_unseat_agent(agent, facility)
     end
@@ -1167,6 +1246,12 @@ function FacilityService:destroy()
             end
         elseif self:_is_swing_seat(facility) and facility.active_agent then
             self:_end_swing_seat(facility.active_agent, facility)
+        elseif self:is_crib(facility) and facility.active_agent then
+            facility.seat_token = nil
+            self:_stop_ride_anim(facility.active_agent)
+            if facility.active_agent.unlock_ride_move_state then
+                facility.active_agent:unlock_ride_move_state()
+            end
         end
     end
     self.facilities = {}
