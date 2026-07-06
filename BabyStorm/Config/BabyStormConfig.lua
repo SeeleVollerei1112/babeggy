@@ -358,8 +358,8 @@ Config.crib = {
         {
             key = "diaper",
             item_prefab = (Prefab.unit and Prefab.unit["尿布"]) or 1073745932,
-            hold_socket = "socket_hand_r",
-            hold_offset = { 0, 0, 0 },
+            hold_socket = "socket_head",
+            hold_offset = { 0, 0.8, 0 },
             hold_scale = { 0.3, 0.3, 0.3 },
             need_text = "要换尿布啦",
             action_text = "换尿布",
@@ -370,8 +370,8 @@ Config.crib = {
         {
             key = "tissue",
             item_prefab = (Prefab.unit and Prefab.unit["纸巾"]) or 1073737845,
-            hold_socket = "socket_hand_r",
-            hold_offset = { 0, 0, 0 },
+            hold_socket = "socket_head",
+            hold_offset = { 0, 0.8, 0 },
             hold_scale = { 0.3, 0.3, 0.3 },
             need_text = "要擦屁屁啦",
             action_text = "擦屁股",

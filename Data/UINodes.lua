@@ -7,6 +7,9 @@ return {
 	get_diaper_btn = "1519736575|2131768068" --[[@as EButton]],
 	get_tissue_btn = "1519736575|2059687722" --[[@as EButton]],
 	hud_canvas = "1519736575|1405255247" --[[@as ECanvas]],
-	progress_bar = "1519736575|1588933591" --[[@as EProgressbar]],
-	straighten_bed_btn_1 = "1519736575|1728644469" --[[@as EButton]],
+	prgress_bar_btn = "1519736575|1255000229" --[[@as EButton]],
+	--Duplicated Names!
+	--progress_bar = "1519736575|1588933591" --[[@as EProgressbar]],
+	--progress_bar = "1519736575|1425636654" --[[@as EProgressbar]],
+	straighten_bed_btn = "1519736575|1728644469" --[[@as EButton]],
 }
