@@ -1,4 +1,5 @@
 local Class = require("BaseClass")
+local Rand = require("Util.Rand")
 
 ---@class RandomBag
 ---@field _source any[]
@@ -11,12 +12,6 @@ function RandomBag:Ctor(items)
     self._bag = {}
 end
 
----@param count integer
----@return integer
-function RandomBag:_rand_index(count)
-    return math.tointeger((LuaAPI.rand() % count) + 1)
-end
-
 ---@private
 function RandomBag:_refill()
     self._bag = {}
@@ -25,7 +20,7 @@ function RandomBag:_refill()
     end
 
     for index = #self._bag, 2, -1 do
-        local swap_index = self:_rand_index(index)
+        local swap_index = Rand.index(index)
         self._bag[index], self._bag[swap_index] = self._bag[swap_index], self._bag[index]
     end
 end

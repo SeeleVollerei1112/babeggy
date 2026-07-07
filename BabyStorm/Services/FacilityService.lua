@@ -1,5 +1,7 @@
 local Class = require("BaseClass")
 local UnitUtil = require("Util.UnitUtil")
+local MathX = require("Util.MathX")
+local Rand = require("Util.Rand")
 local Log = require("Util.Log")
 
 local ZERO = math.Vector3(0.0, 0.0, 0.0)
@@ -233,7 +235,7 @@ function FacilityService:_snap_baby_to_rider(agent, facility)
 
     -- 位置：优先用玩家“局部坐标系偏移”（抬高/侧移会随玩家朝向走），退化为玩家世界坐标。
     -- 用 set_position_smooth 让引擎在两次更新间插值，跟随不一卡一卡。
-    local offset = self:_to_vector3(def.vehicle_follow_offset)
+    local offset = MathX.to_vector3(def.vehicle_follow_offset)
     local pos = nil
     if offset and rider.get_local_offset_position then
         local ok, p = pcall(function() return rider.get_local_offset_position(offset) end)
@@ -272,7 +274,7 @@ function FacilityService:_follow_rider_orientation(agent, facility)
     end
 
     -- 可选：在滑板朝向基础上叠加固定角度偏移（局部右乘），默认 {0,0,0} = 和滑板朝向完全一致
-    local off = self:_to_quaternion(facility.def.vehicle_follow_rotation)
+    local off = MathX.to_quaternion(facility.def.vehicle_follow_rotation)
     if off then
         local mok, composed = pcall(function() return rot * off end)
         if mok and composed then
@@ -340,9 +342,9 @@ function FacilityService:_attach_decoration_model(agent, facility)
     end
     local socket_name = def.vehicle_passenger_socket or "socket_origin"
     local socket = Enums.ModelSocket[socket_name] or Enums.ModelSocket.socket_origin
-    local offset = self:_to_vector3(def.vehicle_passenger_offset)
-    local rotation = self:_to_quaternion(def.vehicle_passenger_rotation)
-    local scale = self:_to_vector3(def.vehicle_passenger_scale)
+    local offset = MathX.to_vector3(def.vehicle_passenger_offset)
+    local rotation = MathX.to_quaternion(def.vehicle_passenger_rotation)
+    local scale = MathX.to_vector3(def.vehicle_passenger_scale)
     local ok, bind_id = pcall(function()
         return agent.unit.bind_model(model_id, socket, offset, rotation, scale)
     end)
@@ -481,14 +483,9 @@ function FacilityService:_random_duration(need)
         max_seconds = min_seconds
     end
 
-    local span = max_seconds - min_seconds + 1
-    local raw = LuaAPI.rand and LuaAPI.rand() or 0
-    if raw < 0 then
-        raw = -raw
-    end
     -- 必须返回 Fixed（小数）：该值会作为 call_delay_time 的间隔使用，
     -- 传整数会被当成 0 立即触发，导致秋千互动“坐下即结束”。
-    return (min_seconds + (raw % span)) + 0.0
+    return Rand.int(min_seconds, max_seconds) + 0.0
 end
 
 ---@param agent BabyAgent|nil
@@ -559,7 +556,7 @@ function FacilityService:_sync_seat(agent, facility, token)
 
     local def = facility.def
     if facility.unit and agent.unit and agent.unit.set_position then
-        local offset = self:_to_vector3(def.seat_offset)
+        local offset = MathX.to_vector3(def.seat_offset)
         local pos = nil
         if offset and facility.unit.get_local_offset_position then
             pos = facility.unit.get_local_offset_position(offset)
@@ -577,7 +574,7 @@ function FacilityService:_sync_seat(agent, facility, token)
                 local ok, srot = pcall(function() return facility.unit.get_orientation() end)
                 if ok and srot then
                     rot = srot
-                    local off = self:_to_quaternion(def.seat_rotation)
+                    local off = MathX.to_quaternion(def.seat_rotation)
                     if off then
                         local mok, composed = pcall(function() return srot * off end)
                         if mok and composed then
@@ -586,7 +583,7 @@ function FacilityService:_sync_seat(agent, facility, token)
                     end
                 end
             else
-                rot = self:_to_quaternion(def.seat_rotation)
+                rot = MathX.to_quaternion(def.seat_rotation)
             end
             if rot then
                 pcall(function() agent.unit.set_orientation(rot) end)
@@ -687,7 +684,7 @@ function FacilityService:_drive_swing_force(agent, facility, token)
             end
         else
             -- 几乎静止：按配置方向起摆。
-            local dir = self:_to_vector3(def.swing_push_dir) or math.Vector3(1.0, 0.0, 0.0)
+            local dir = MathX.to_vector3(def.swing_push_dir) or math.Vector3(1.0, 0.0, 0.0)
             fx, fz = dir.x * mag, dir.z * mag
         end
         if fx ~= 0.0 or fz ~= 0.0 then
@@ -834,35 +831,6 @@ end
 -- 宝宝硬粘在座位上，整体平顺度由滑板自身的缓动运动带来。
 
 local KINE_DT = 0.0333
-local TWO_PI = 6.2831853
-
----把角度归一化到 [-pi, pi]
----@param a Fixed
----@return Fixed
-local function wrap_angle(a)
-    a = math.fmod(a, TWO_PI)
-    if a > TWO_PI * 0.5 then
-        a = a - TWO_PI
-    elseif a < -TWO_PI * 0.5 then
-        a = a + TWO_PI
-    end
-    return a
-end
-
----把 current 朝 desired 旋转，单步最多 max_delta（弧度）
----@param current Fixed
----@param desired Fixed
----@param max_delta Fixed
----@return Fixed
-local function approach_angle(current, desired, max_delta)
-    local diff = wrap_angle(desired - current)
-    if diff > max_delta then
-        diff = max_delta
-    elseif diff < -max_delta then
-        diff = -max_delta
-    end
-    return wrap_angle(current + diff)
-end
 
 ---@param agent BabyAgent
 ---@param facility BabyFacilityRecord
@@ -921,14 +889,14 @@ function FacilityService:_drive_vehicle_kinematic(agent, facility, token)
     if drive.target and dist > 0.01 then
         desired = math.atan2(drive.target.x - vpos.x, drive.target.z - vpos.z)
     end
-    drive.heading = approach_angle(drive.heading, desired, turn_speed * KINE_DT)
+    drive.heading = MathX.approach_angle(drive.heading, desired, turn_speed * KINE_DT)
 
     -- 目标速度：靠近目标点线性减速；朝向偏差大时降速避免甩头
     local target_speed = max_speed
     if dist < arrive_radius then
         target_speed = max_speed * (dist / arrive_radius)
     end
-    if math.abs(wrap_angle(desired - drive.heading)) > 0.5 then
+    if math.abs(MathX.wrap_angle(desired - drive.heading)) > 0.5 then
         target_speed = target_speed * 0.4
     end
     -- 当前速度朝目标速度按加速度逼近
@@ -1019,7 +987,7 @@ end
 ---@param offset_values Fixed[]|nil
 ---@return Vector3
 function FacilityService:_vehicle_seat_pos(vehicle, vehicle_pos, offset_values)
-    local offset = self:_to_vector3(offset_values) or math.Vector3(0.0, 0.5, 0.0)
+    local offset = MathX.to_vector3(offset_values) or math.Vector3(0.0, 0.5, 0.0)
     if vehicle.get_local_offset_position then
         local ok, p = pcall(function() return vehicle.get_local_offset_position(offset) end)
         if ok and p then
@@ -1152,28 +1120,6 @@ function FacilityService:_point_in_area(pos, area)
         return GameAPI.is_point_in_customtriggerspace(pos, area)
     end)
     return ok and result or false
-end
-
----@param values Fixed[]|nil
----@return Vector3|nil
-function FacilityService:_to_vector3(values)
-    if not values then
-        return nil
-    end
-    return math.Vector3(values[1], values[2], values[3])
-end
-
----@param values Fixed[]|nil
----@return Quaternion|nil
-function FacilityService:_to_quaternion(values)
-    if not values then
-        return nil
-    end
-    return math.Quaternion(
-        math.deg_to_rad(values[1]),
-        math.deg_to_rad(values[2]),
-        math.deg_to_rad(values[3])
-    )
 end
 
 ---@param agent BabyAgent|nil

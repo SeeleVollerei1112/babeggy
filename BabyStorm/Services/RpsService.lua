@@ -2,6 +2,7 @@ local Class = require("BaseClass")
 local UnitUtil = require("Util.UnitUtil")
 local RoleUtil = require("Util.RoleUtil")
 local Intent = require("BabyStorm.Domain.BabyIntent")
+local Rand = require("Util.Rand")
 local Log = require("Util.Log")
 
 local State = {
@@ -332,9 +333,9 @@ function RpsService:_drive_pairing_fidget(dt)
     self.fidget_timer = self.cfg.pairing_fidget_interval
     local radius = self.cfg.pairing_fidget_radius
     local target = math.Vector3(
-        self.fidget_anchor.x + self:_rand_signed() * radius,
+        self.fidget_anchor.x + Rand.signed() * radius,
         self.fidget_anchor.y,
-        self.fidget_anchor.z + self:_rand_signed() * radius
+        self.fidget_anchor.z + Rand.signed() * radius
     )
     if unit.start_move_to_pos_with_threshold then
         ensure_ai(unit)
@@ -621,14 +622,14 @@ function RpsService:_baby_bonk_dir(unit, randomize)
 
     local bx, bz
     if length < 0.3 then
-        bx, bz = self:_rand_signed(), self:_rand_signed()
+        bx, bz = Rand.signed(), Rand.signed()
         if bx * bx + bz * bz < 0.01 then
             bx, bz = 1.0, 0.0
         end
     else
         bx, bz = dx / length, dz / length
         local perp_x, perp_z = -bz, bx
-        local offset = self:_rand_signed() * self.cfg.baby_bonk_offset
+        local offset = Rand.signed() * self.cfg.baby_bonk_offset
         bx = bx + perp_x * offset
         bz = bz + perp_z * offset
     end
@@ -637,19 +638,6 @@ function RpsService:_baby_bonk_dir(unit, randomize)
         bx, bz = bx / norm, bz / norm
     end
     return math.Vector3(bx, 0.0, bz)
-end
-
--- 返回 [-1, 1] 的随机数，用于顶撞的随机横向偏移。
----@return Fixed
-function RpsService:_rand_signed()
-    if GameAPI and GameAPI.random_int then
-        return (GameAPI.random_int(0, 200) - 100) / 100.0
-    end
-    local raw = LuaAPI.rand and LuaAPI.rand() or 0
-    if raw < 0 then
-        raw = -raw
-    end
-    return (raw % 201 - 100) / 100.0
 end
 
 -- 两颗骰子都接近静止（线速度足够小）且真正落回地面附近（而不是卡在角色头顶/身上）才算落定。
@@ -807,7 +795,7 @@ function RpsService:_begin_give_up()
         agent:set_status("没人理我，我自己溜达溜达…")
     end
     self.giveup_elapsed = 0.0
-    self.giveup_duration = self:_random_range(self.cfg.giveup_wander_min, self.cfg.giveup_wander_max)
+    self.giveup_duration = Rand.fixed(self.cfg.giveup_wander_min, self.cfg.giveup_wander_max)
     self.giveup_move_timer = 0.0 -- 立刻走第一步，不用等第一个 interval。
     self.state = State.GivingUp
     Log.info("rps giving up, wandering seconds", self.giveup_duration)
@@ -850,27 +838,6 @@ function RpsService:_drive_give_up_wander(dt)
             unit.start_move_to_pos_with_threshold(ground_target, agent.config.baby.patrol_threshold, 0.5)
         end)
     end
-end
-
--- 返回 [min, max] 区间内的随机数。
----@param min_value Fixed
----@param max_value Fixed
----@return Fixed
-function RpsService:_random_range(min_value, max_value)
-    if max_value < min_value then
-        max_value = min_value
-    end
-    local raw
-    if GameAPI and GameAPI.random_int then
-        raw = GameAPI.random_int(0, 1000)
-    else
-        raw = LuaAPI.rand and LuaAPI.rand() or 0
-        if raw < 0 then
-            raw = -raw
-        end
-        raw = raw % 1001
-    end
-    return min_value + (max_value - min_value) * (raw / 1000.0)
 end
 
 -- 配对等待期间让宝宝转头看向玩家（候选人变化才重新调用引擎接口，避免每帧重复）。

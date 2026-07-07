@@ -1,4 +1,5 @@
 local Class = require("BaseClass")
+local Rand = require("Util.Rand")
 local Log = require("Util.Log")
 
 ---@class ArenaService
@@ -28,23 +29,6 @@ function ArenaService:init()
     return true
 end
 
----@param min_value Fixed
----@param max_value Fixed
----@return Fixed
-local function random_fixed(min_value, max_value)
-    local raw
-    if GameAPI and GameAPI.random_int then
-        raw = GameAPI.random_int(0, 10000)
-    else
-        raw = LuaAPI.rand and LuaAPI.rand() or 0
-        if raw < 0 then
-            raw = -raw
-        end
-        raw = raw % 10001
-    end
-    return min_value + (max_value - min_value) * (raw / 10000.0)
-end
-
 ---@return Vector3
 function ArenaService:random_point()
     if self.area and self.area.random_point then
@@ -56,9 +40,9 @@ function ArenaService:random_point()
     local arena = self.config.arena
     if arena.fallback_min_x and arena.fallback_max_x and arena.fallback_min_z and arena.fallback_max_z then
         return math.Vector3(
-            random_fixed(arena.fallback_min_x, arena.fallback_max_x),
+            Rand.fixed(arena.fallback_min_x, arena.fallback_max_x),
             arena.fallback_y or 1.0,
-            random_fixed(arena.fallback_min_z, arena.fallback_max_z)
+            Rand.fixed(arena.fallback_min_z, arena.fallback_max_z)
         )
     end
     return math.Vector3(0, 1, 0)

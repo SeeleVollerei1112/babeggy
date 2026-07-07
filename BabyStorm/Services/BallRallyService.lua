@@ -1,5 +1,7 @@
 local Class = require("BaseClass")
 local UnitUtil = require("Util.UnitUtil")
+local MathX = require("Util.MathX")
+local Rand = require("Util.Rand")
 local Log = require("Util.Log")
 
 local State = {
@@ -41,61 +43,6 @@ local BallRallyService = Class("BallRallyService")
 
 local ZERO = math.Vector3(0.0, 0.0, 0.0)
 local RALLY_LOCK = "ball_rally"
-
----@param value Fixed
----@param min_value Fixed
----@param max_value Fixed
----@return Fixed
-local function clamp(value, min_value, max_value)
-    if value < min_value then
-        return min_value
-    end
-    if value > max_value then
-        return max_value
-    end
-    return value
-end
-
----@param a Fixed
----@param b Fixed
----@param t Fixed
----@return Fixed
-local function lerp(a, b, t)
-    return a + (b - a) * t
-end
-
--- 飞行进度缓动：两端快、中间慢（ease-out-in，顶点自带悬停感）。
--- hang ∈ [0,1] 控制中段变慢程度：0=匀速，1=顶点近乎悬停。
----@param s Fixed 线性进度 [0,1]
----@param hang Fixed|nil
----@return Fixed
-local function ease_out_in(s, hang)
-    local shaped
-    if s < 0.5 then
-        shaped = s * (2.0 - 2.0 * s) -- 前半段 ease-out：起手快
-    else
-        local k = 2.0 * s - 1.0
-        shaped = 0.5 + 0.5 * k * k -- 后半段 ease-in：落地快
-    end
-    return s + (shaped - s) * (hang or 0.0)
-end
-
----@param min_value Fixed
----@param max_value Fixed
----@return Fixed
-local function random_fixed(min_value, max_value)
-    local raw
-    if GameAPI and GameAPI.random_int then
-        raw = GameAPI.random_int(0, 10000)
-    else
-        raw = LuaAPI.rand and LuaAPI.rand() or 0
-        if raw < 0 then
-            raw = -raw
-        end
-        raw = raw % 10001
-    end
-    return min_value + (max_value - min_value) * (raw / 10000.0)
-end
 
 ---@param config BabyStormConfig
 ---@param triggers TriggerRegistry
@@ -376,11 +323,7 @@ function BallRallyService:_begin_session(agent, ball)
 
     self.server = agent
     self.player_hits = 0
-    if GameAPI and GameAPI.random_int then
-        self.rally_max = GameAPI.random_int(self.cfg.rally_max_min, self.cfg.rally_max_max)
-    else
-        self.rally_max = self.cfg.rally_max_min
-    end
+    self.rally_max = Rand.int(self.cfg.rally_max_min, self.cfg.rally_max_max)
     self.release_attempted = false
     self.pending_launch = false
 
@@ -695,9 +638,9 @@ function BallRallyService:_launch_to_baby()
     end
 
     local target = math.Vector3(
-        clamp(baby_pos.x, self.cfg.min_x, self.cfg.max_x),
+        MathX.clamp(baby_pos.x, self.cfg.min_x, self.cfg.max_x),
         baby_pos.y + self.cfg.catch_height,
-        clamp(baby_pos.z, self.cfg.min_z, self.cfg.max_z)
+        MathX.clamp(baby_pos.z, self.cfg.min_z, self.cfg.max_z)
     )
     self.target = target
     self.player_hits = self.player_hits + 1
@@ -735,23 +678,23 @@ function BallRallyService:_choose_player_target()
         )
     end
 
-    local dx = random_fixed(-1.0, 1.0)
-    local dz = random_fixed(-1.0, 1.0)
+    local dx = Rand.fixed(-1.0, 1.0)
+    local dz = Rand.fixed(-1.0, 1.0)
     local length = math.sqrt(dx * dx + dz * dz)
     if length < 0.1 then
         dx = 1.0
         dz = 0.0
         length = 1.0
     end
-    local distance = random_fixed(self.cfg.target_jitter_min, self.cfg.target_jitter_max)
+    local distance = Rand.fixed(self.cfg.target_jitter_min, self.cfg.target_jitter_max)
     dx = dx / length * distance
     dz = dz / length * distance
 
     local y = self.cfg.floor_y + self.cfg.ball_ground_origin_offset
     local target = math.Vector3(
-        clamp(player_pos.x + dx, self.cfg.min_x, self.cfg.max_x),
+        MathX.clamp(player_pos.x + dx, self.cfg.min_x, self.cfg.max_x),
         y,
-        clamp(player_pos.z + dz, self.cfg.min_z, self.cfg.max_z)
+        MathX.clamp(player_pos.z + dz, self.cfg.min_z, self.cfg.max_z)
     )
     return self:_enforce_min_throw(target, y)
 end
@@ -777,9 +720,9 @@ function BallRallyService:_enforce_min_throw(target, y)
         tdx, tdz, d = 1.0, 0.0, 1.0
     end
     return math.Vector3(
-        clamp(baby_pos.x + tdx / d * min_d, self.cfg.min_x, self.cfg.max_x),
+        MathX.clamp(baby_pos.x + tdx / d * min_d, self.cfg.min_x, self.cfg.max_x),
         y,
-        clamp(baby_pos.z + tdz / d * min_d, self.cfg.min_z, self.cfg.max_z)
+        MathX.clamp(baby_pos.z + tdz / d * min_d, self.cfg.min_z, self.cfg.max_z)
     )
 end
 
@@ -793,7 +736,7 @@ function BallRallyService:_choose_flight_time(start_pos, target_pos, min_time, m
     local dz = target_pos.z - start_pos.z
     local horizontal_distance = math.sqrt(dx * dx + dz * dz)
     local minimum_for_speed = horizontal_distance / self.cfg.max_horizontal_speed
-    local flight_time = random_fixed(min_time, max_time)
+    local flight_time = Rand.fixed(min_time, max_time)
     if flight_time < minimum_for_speed then
         flight_time = minimum_for_speed
     end
@@ -815,7 +758,7 @@ function BallRallyService:_begin_kinematic_flight(start_pos)
         local dx = target.x - start_pos.x
         local dz = target.z - start_pos.z
         local dist = math.sqrt(dx * dx + dz * dz)
-        self.flight_arc_peak = clamp(
+        self.flight_arc_peak = MathX.clamp(
             self.cfg.arc_height_ratio * dist,
             self.cfg.arc_peak_min,
             self.cfg.arc_peak_max
@@ -868,12 +811,12 @@ function BallRallyService:_drive_ball_kinematic()
     elseif s > 1.0 then
         s = 1.0
     end
-    local u = ease_out_in(s, self.cfg.flight_hang)
+    local u = MathX.ease_out_in(s, self.cfg.flight_hang)
     local arc = 4.0 * self.flight_arc_peak * u * (1.0 - u)
     local pos = math.Vector3(
-        lerp(p0.x, p1.x, u),
-        lerp(p0.y, p1.y, u) + arc,
-        lerp(p0.z, p1.z, u)
+        MathX.lerp(p0.x, p1.x, u),
+        MathX.lerp(p0.y, p1.y, u) + arc,
+        MathX.lerp(p0.z, p1.z, u)
     )
     pcall(function()
         if ball.set_position_smooth then

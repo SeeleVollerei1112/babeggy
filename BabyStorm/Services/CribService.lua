@@ -3,19 +3,14 @@ local UnitUtil = require("Util.UnitUtil")
 local RoleUtil = require("Util.RoleUtil")
 local UINodes = require("Data.UINodes")
 local Prefab = require("Data.Prefab")
+local Rand = require("Util.Rand")
 local Log = require("Util.Log")
 
 -- ============================================================
 -- CribService —— 婴儿床“换尿布 / 擦屁股”玩法
 -- ============================================================
--- HUD 节点（均来自 Data.UINodes）：
---   hud_canvas
---   ├── get_diaper_btn / get_tissue_btn：靠近柜子时显示，点击取手持道具
---   ├── change_diaper_btn：换尿布，持续按住 8 秒
---   ├── claen_baby_btn：擦屁股，持续按住 5 秒
---   ├── straighten_bed_btn_1：扶正床，持续按住 3 秒
---   └── progress_bar：三种动作共用
--- 引擎侧把按钮点击/按下/松开映射为 UI_CUSTOM_EVENT；Lua 负责校验、显隐、进度与结算。
+-- 场景 UI：cabinet_canvas 提供尿布/纸巾入口，progress_bar_canvas 提供床边长按进度。
+-- 引擎侧把图片点击和按钮按下/松开映射为 UI_CUSTOM_EVENT；Lua 负责校验、显隐、进度与结算。
 ---@class CribCareSession
 ---@field agent BabyAgent
 ---@field sub BabyCribSubType
@@ -43,13 +38,12 @@ local UI_EVENT = {
     CLEAN_BABY_UP = "BABY_CRIB_UI_CLEAN_BABY_UP",
     STRAIGHTEN_BED_DOWN = "BABY_CRIB_UI_STRAIGHTEN_BED_DOWN",
     STRAIGHTEN_BED_UP = "BABY_CRIB_UI_STRAIGHTEN_BED_UP",
+    PROGRESS_DOWN = "BABY_CRIB_UI_PROGRESS_DOWN",
+    PROGRESS_UP = "BABY_CRIB_UI_PROGRESS_UP",
     DIAPER_PICKED = "BABY_CRIB_DIAPER_PICKED",
     TISSUE_PICKED = "BABY_CRIB_TISSUE_PICKED",
 }
 
-local SCENE_PROGRESS_NODE = "1519736575|1425636654"
-local TOUCH_PRESS = 2
-local TOUCH_RELEASE = 3
 -- set_progressbar_current/max 要 Lua int：这里的 math 是定点数库，math.floor 返回 Fix32，
 -- 必须再 math.tointeger 转成真正的整数，否则引擎报 “节点类型不正确 / expected int” 且进度条不刷新。
 ---@param x number
@@ -66,6 +60,8 @@ function CribService:Ctor(config, triggers)
     self.triggers = triggers
     self.facility = nil
     self.cabinet_pos = nil
+    self.cabinet_unit = nil
+    self.cabinet_layer = nil
     self.role_held = {} ---@type table<any, CribHeldItem>
     self.started = false
     self._poll_accum = 0.0
@@ -102,6 +98,7 @@ function CribService:start()
         beds[index].crib_reset_pressing = nil
     end
     self:_bind_progress_ui(beds[1])
+    self:_bind_cabinet_ui()
 
     self:_setup_ui_events()
     self:_refresh_ui()
@@ -127,7 +124,9 @@ function CribService:_setup_ui_events()
     bind(UI_EVENT.CLEAN_BABY_UP, function(role) self:_on_action_up(role, "tissue") end)
     bind(UI_EVENT.STRAIGHTEN_BED_DOWN, function(role) self:_on_action_down(role, "reset") end)
     bind(UI_EVENT.STRAIGHTEN_BED_UP, function(role) self:_on_action_up(role, "reset") end)
-    Log.info("crib HUD UI events ready")
+    bind(UI_EVENT.PROGRESS_DOWN, function(role) self:_on_current_action(role, true) end)
+    bind(UI_EVENT.PROGRESS_UP, function(role) self:_on_current_action(role, false) end)
+    Log.info("crib scene UI events ready")
 end
 
 ---@param role Role|nil
@@ -165,31 +164,31 @@ function CribService:_bind_progress_ui(facility)
     )
     facility.crib_progress_node = GameAPI.get_eui_node_at_scene_ui(
         facility.crib_progress_layer,
-        SCENE_PROGRESS_NODE
+        UINodes.progress_bar
     )
-    facility.crib_progress_button = GameAPI.get_eui_node_at_scene_ui(
-        facility.crib_progress_layer,
-        UINodes.prgress_bar_btn
-    )
-    if facility.crib_progress_button then
-        self.triggers:global(
-            { EVENT.EUI_NODE_TOUCH_EVENT, facility.crib_progress_button, TOUCH_PRESS },
-            function(_, _, data)
-                Log.info("crib DEBUG touch PRESS raw", "role", tostring(data and data.role))
-                self:_on_current_action(data and data.role or nil, true)
-            end
-        )
-        self.triggers:global(
-            { EVENT.EUI_NODE_TOUCH_EVENT, facility.crib_progress_button, TOUCH_RELEASE },
-            function(_, _, data)
-                Log.info("crib DEBUG touch RELEASE raw", "role", tostring(data and data.role))
-                self:_on_current_action(data and data.role or nil, false)
-            end
-        )
-    else
-        Log.warn("crib progress button missing from scene UI")
-    end
     Log.info("crib progress scene UI bound to 儿童单人床0", tostring(facility.crib_progress_layer))
+end
+
+function CribService:_bind_cabinet_ui()
+    local layer_key = Prefab.scene_eui and Prefab.scene_eui.cabinet_canvas
+    local unit_name = self.crib_config.cabinet_unit_name or "木制边柜3"
+    local cabinet = LuaAPI.query_unit(unit_name)
+    if not (layer_key and cabinet and cabinet.create_scene_ui_bind_unit) then
+        Log.warn("crib cabinet scene UI bind skipped", unit_name)
+        return
+    end
+
+    local offset = self.crib_config.cabinet_ui_offset or { 0, 1.5, 0 }
+    self.cabinet_unit = cabinet
+    self.cabinet_layer = cabinet.create_scene_ui_bind_unit(
+        layer_key,
+        Enums.ModelSocket.socket_origin,
+        math.Vector3(offset[1], offset[2], offset[3]),
+        -1.0,
+        false,
+        true
+    )
+    Log.info("crib cabinet scene UI bound", unit_name, tostring(self.cabinet_layer))
 end
 
 ---@param key string
@@ -236,15 +235,11 @@ end
 ---@return BabyCribSubType
 function CribService:_roll_sub_type()
     local subs = self.crib_config.sub_types
-    local idx = 1
-    if GameAPI and GameAPI.random_int then
-        idx = GameAPI.random_int(1, #subs)
-    end
-    return subs[idx] or subs[1]
+    return subs[Rand.index(#subs)] or subs[1]
 end
 
 -- ============================================================
--- 取尿布 / 纸巾：把对应模型挂到点击者头顶，并记录逻辑持有物。
+-- 取尿布 / 纸巾：创建真实组件并交给玩家举起，同时记录逻辑持有物。
 -- ============================================================
 
 ---@param role Role|nil
@@ -261,28 +256,52 @@ function CribService:_on_pick_item(role, sub)
     end
     self:_clear_held(role_id)
 
-    -- bind_model 把尿布/纸巾 UnitKey 作为模型挂到玩家头顶。
     local player = role.get_ctrl_unit and role.get_ctrl_unit() or nil
-    local bind_id = nil
-    if player and player.bind_model then
-        local socket = (Enums and Enums.ModelSocket and Enums.ModelSocket[sub.hold_socket or "socket_hand_r"])
-            or (Enums and Enums.ModelSocket and Enums.ModelSocket.socket_hand_r)
-            or (Enums and Enums.ModelSocket and Enums.ModelSocket.socket_origin)
-        local off = sub.hold_offset and math.Vector3(sub.hold_offset[1], sub.hold_offset[2], sub.hold_offset[3])
-            or math.Vector3(0, 0, 0)
-        local scale = sub.hold_scale and math.Vector3(sub.hold_scale[1], sub.hold_scale[2], sub.hold_scale[3])
-            or math.Vector3(0.3, 0.3, 0.3)
-        local ok, id = pcall(function()
-            return player.bind_model(sub.item_prefab, socket, off, math.Quaternion(0, 0, 0), scale)
-        end)
-        if ok then
-            bind_id = id
-        else
-            Log.warn("crib hold bind_model failed", sub.key, tostring(id))
+    local player_pos = player and player.get_position and player.get_position() or nil
+    if not (player and player_pos and player.lift_unit and GameAPI.create_obstacle) then
+        Log.warn("crib lift item unavailable", sub.key)
+        return
+    end
+
+    if player.get_lifted_obstacle then
+        local ok, lifted = pcall(function() return player.get_lifted_obstacle() end)
+        if ok and lifted then
+            if role.show_tips then
+                role.show_tips("请先放下手中的物品", 1.5)
+            end
+            return
         end
     end
 
-    self.role_held[role_id] = { key = sub.key, bind_id = bind_id, unit = player }
+    local scale_cfg = sub.hold_scale or { 0.3, 0.3, 0.3 }
+    local ok, item_unit = pcall(function()
+        return GameAPI.create_obstacle(
+            sub.item_prefab,
+            player_pos + math.Vector3(0.0, 0.5, 0.0),
+            math.Quaternion(0.0, 0.0, 0.0),
+            math.Vector3(scale_cfg[1], scale_cfg[2], scale_cfg[3]),
+            role
+        )
+    end)
+    if not (ok and item_unit) then
+        Log.warn("crib create lifted item failed", sub.key, tostring(item_unit))
+        return
+    end
+
+    if item_unit.set_lifted_enabled then
+        pcall(function() item_unit.set_lifted_enabled(true) end)
+    end
+    local lift_ok, lift_err = pcall(function() player.lift_unit(item_unit) end)
+    if not lift_ok then
+        pcall(function() GameAPI.destroy_unit(item_unit) end)
+        Log.warn("crib player lift item failed", sub.key, tostring(lift_err))
+        return
+    end
+
+    self.role_held[role_id] = { key = sub.key, item_unit = item_unit, unit = player }
+    self.triggers:unit(item_unit, { EVENT.SPEC_OBSTACLE_LIFTED_END }, function()
+        self:_on_held_item_released(role_id, item_unit)
+    end)
     -- 取到对应道具算“开始照顾”：重置正在等这类道具的宝宝的歪床倒计时，给玩家走回床边的时间。
     self:_reset_idle_for_sub(sub.key)
     if role.show_tips then
@@ -297,7 +316,19 @@ function CribService:_on_pick_item(role, sub)
             action = sub.key,
         })
     end
-    Log.info("crib pick item ok", sub.key, "role", role_id, "bind", tostring(bind_id))
+    Log.info("crib pick item lifted", sub.key, "role", role_id, tostring(item_unit))
+    self:_refresh_ui()
+end
+
+---@param role_id any
+---@param item_unit Obstacle|Unit
+function CribService:_on_held_item_released(role_id, item_unit)
+    local held = role_id and self.role_held[role_id] or nil
+    if not (held and UnitUtil.same_unit(held.item_unit, item_unit)) then
+        return
+    end
+    self.role_held[role_id] = nil
+    Log.info("crib held item released", tostring(role_id), held.key)
     self:_refresh_ui()
 end
 
@@ -319,10 +350,14 @@ function CribService:_clear_held(role_id)
     if not held then
         return
     end
+    self.role_held[role_id] = nil
+    if held.item_unit and GameAPI.destroy_unit then
+        pcall(function() GameAPI.destroy_unit(held.item_unit) end)
+    end
+    -- 兼容清理更新前已创建的旧 bind_model 记录。
     if held.unit and held.bind_id and held.unit.unbind_model then
         pcall(function() held.unit.unbind_model(tostring(held.bind_id)) end)
     end
-    self.role_held[role_id] = nil
 end
 
 -- ============================================================
@@ -553,7 +588,7 @@ function CribService:_emit_action_event(event_name, role_id, facility, session)
 end
 
 -- ============================================================
--- HUD 显隐 + 公用进度条刷新
+-- 场景 UI 显隐 + 公用进度条刷新
 -- ============================================================
 
 function CribService:_refresh_ui()
@@ -567,13 +602,11 @@ function CribService:_refresh_ui()
             self.cabinet_pos,
             self.crib_config.cabinet_show_radius
         )
-        self:_set_hud_visible(role, UINodes.get_diaper_btn, cabinet_visible)
-        self:_set_hud_visible(role, UINodes.get_tissue_btn, cabinet_visible)
+        if self.cabinet_layer and GameAPI.set_scene_ui_visible then
+            pcall(function() GameAPI.set_scene_ui_visible(self.cabinet_layer, role, cabinet_visible) end)
+        end
 
         local facility, action = self:_action_target_for_role(role, role_id)
-        self:_set_hud_visible(role, UINodes.change_diaper_btn, action == "diaper")
-        self:_set_hud_visible(role, UINodes.claen_baby_btn, action == "tissue")
-        self:_set_hud_visible(role, UINodes.straighten_bed_btn_1, action == "reset")
         local progress_node = progress_facility and progress_facility.crib_progress_node or nil
         local progress_layer = progress_facility and progress_facility.crib_progress_layer or nil
         local progress_visible = facility == progress_facility and action ~= nil
@@ -629,14 +662,6 @@ function CribService:_action_target_for_role(role, role_id)
     return best, best_action
 end
 
----@param role Role
----@param node ENode|nil
----@param visible boolean
-function CribService:_set_hud_visible(role, node, visible)
-    if role and node and role.set_node_visible then
-        pcall(function() role.set_node_visible(node, visible and true or false) end)
-    end
-end
 -- ============================================================
 -- 距离工具
 -- ============================================================
@@ -707,13 +732,10 @@ function CribService:destroy()
     end
     self.role_held = {}
 
-    local roles = GameAPI.get_all_valid_roles() or {}
-    for _, role in ipairs(roles) do
-        self:_set_hud_visible(role, UINodes.get_diaper_btn, false)
-        self:_set_hud_visible(role, UINodes.get_tissue_btn, false)
-        self:_set_hud_visible(role, UINodes.change_diaper_btn, false)
-        self:_set_hud_visible(role, UINodes.claen_baby_btn, false)
-        self:_set_hud_visible(role, UINodes.straighten_bed_btn_1, false)
+    if self.cabinet_layer and GameAPI.destroy_scene_ui then
+        pcall(function() GameAPI.destroy_scene_ui(self.cabinet_layer) end)
+        self.cabinet_layer = nil
+        self.cabinet_unit = nil
     end
     local beds = self.facility and self.facility:get_facilities_by_kind("crib") or {}
     for index = 1, #beds do

@@ -11,6 +11,7 @@ return {
 		["草莓奶昔_自定义"] = 1073774699,
 	},
 	scene_eui = {
+		cabinet_canvas = 1073741934,
 		progress_bar_canvas = 1073737732,
 	},
 	unit = {

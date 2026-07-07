@@ -342,8 +342,10 @@ Config.rps = {
 
 Config.crib = {
     enabled = true,
-    -- 尿布柜是静态装饰单位，运行时按这个世界坐标做 HUD 显隐距离判定。
+    -- 柜子场景 UI 绑定到该单位；坐标用于玩家距离判定。
+    cabinet_unit_name = "木制边柜3",
     cabinet_pos = { -157.339, 2.555, 6.502 },
+    cabinet_ui_offset = { 0, 1.5, 0 },
     cabinet_show_radius = 4.0,
     progress_show_radius = 4.0,
     poll_interval = 0.2,

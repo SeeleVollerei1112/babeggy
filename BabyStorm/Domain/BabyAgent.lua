@@ -7,6 +7,7 @@ local MovementSystem = require("BabyStorm.Domain.System.MovementSystem")
 local AnimationSystem = require("BabyStorm.Domain.System.AnimationSystem")
 local NeedRuntime = require("BabyStorm.Domain.System.NeedRuntime")
 local RoleUtil = require("Util.RoleUtil")
+local Rand = require("Util.Rand")
 local Log = require("Util.Log")
 
 -- 宝宝个体协调器（重构后）。
@@ -258,14 +259,7 @@ end
 ---@param max_seconds integer
 ---@return integer
 function BabyAgent:_random_seconds(min_seconds, max_seconds)
-    if max_seconds < min_seconds then
-        max_seconds = min_seconds
-    end
-    if GameAPI and GameAPI.random_int then
-        return GameAPI.random_int(min_seconds, max_seconds)
-    end
-    local span = max_seconds - min_seconds + 1
-    return min_seconds + (self.index % span)
+    return Rand.int(min_seconds, max_seconds)
 end
 
 ---@return integer
@@ -778,16 +772,7 @@ function BabyAgent:should_reject_timeout_lift()
         return true
     end
 
-    local roll
-    if GameAPI and GameAPI.random_int then
-        roll = GameAPI.random_int(1, 100)
-    else
-        local raw = LuaAPI.rand and LuaAPI.rand() or 0
-        if raw < 0 then
-            raw = -raw
-        end
-        roll = (raw % 100) + 1
-    end
+    local roll = Rand.int(1, 100)
     Log.info("baby", self.index, "cry reject lift roll", roll, "chance", chance)
     return roll <= chance
 end
