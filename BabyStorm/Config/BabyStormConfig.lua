@@ -150,10 +150,11 @@ local Prefab = require("Data.Prefab")
 ---@field facility_id string|nil
 ---@field facility_name string|nil
 ---@field facility_names string[]|nil
+---@field facility_unit_ids integer[]|nil
 ---@field area_name string|nil
 ---@field contact_area_name string|nil
 ---@field contact_radius Fixed|nil
----@field facility_kind "swing"|"vehicle"|"swing_seat"|"crib"|nil
+---@field facility_kind "swing"|"vehicle"|"swing_seat"|"crib"|"catapult"|nil
 ---@field vehicle_drive_mode "kinematic"|"physics"|"player_bound"|nil
 ---@field vehicle_speed Fixed|nil
 ---@field vehicle_seat_offset Fixed[]|nil
@@ -187,10 +188,16 @@ local Prefab = require("Data.Prefab")
 ---@field seat_socket integer|nil
 ---@field seat_anim_id integer|nil
 ---@field seat_follow_orientation boolean|nil
+---@field seat_orient_unit_name string|nil
 ---@field swing_force_magnitude Fixed|nil
 ---@field swing_push_dir Fixed[]|nil
 ---@field swing_force_interval Fixed|nil
 ---@field swing_max_speed Fixed|nil
+---@field launch_target Fixed[]|nil
+---@field launch_delay Fixed|nil
+---@field flight_duration Fixed|nil
+---@field flight_arc_peak Fixed|nil
+---@field flight_hang Fixed|nil
 ---@field need_timeout_min_seconds integer|nil
 ---@field need_timeout_max_seconds integer|nil
 ---@field timeout_action_seconds integer|nil
@@ -376,7 +383,7 @@ Config.crib = {
             hold_offset = { 0, 0.8, 0 },
             hold_scale = { 0.3, 0.3, 0.3 },
             need_text = "要擦屁屁啦",
-            action_text = "擦屁股",
+            action_text = "纸巾",
             satisfied_text = "擦干净啦~",
             duration_seconds = 5.0,
             complete_event = "BABY_CRIB_TISSUE_COMPLETE",
@@ -517,6 +524,37 @@ Config.needs = {
         swing_max_speed = 4.0,        -- 摆动水平速度上限，超过则本拍不加力，避免越摆越飞
     },
     {
+        -- 投石车：玩家把宝宝抱到投臂上放下 → 宝宝“骑”在投臂上（每帧硬粘到臂的底面中心 socket_origin，
+        -- 跟随臂朝向；复用 _seat_agent/_sync_seat）→ 点发射按钮 → CatapultLaunchService 停跟随、
+        -- 用 FlightDriver 把宝宝抛物线甩到 launch_target → 落地判满足。
+        -- 投臂摆动由编辑器运动器负责（表现）；宝宝是脚本按帧定位的运动学单位，运动器物理碰不到它。
+        id = "catapult_launch",
+        resolver = "facility",
+        facility_kind = "catapult",
+        facility_id = "catapult",
+        -- 投臂按“实体ID”注册（本环境活体不能真绑，改按帧跟随臂的 socket_origin）。
+        facility_unit_ids = { 1110192048 },
+        contact_radius = 10.0, -- 放下宝宝时距投臂多近算“坐上”（XZ 水平半径），够不到就调大
+        action_text = "坐投石车",
+        need_text = "坐投石车",
+        matched_text = "抱上投石臂",
+        satisfied_text = "飞得好高呀~",
+        interact_begin_event = "BABY_CATAPULT_BEGIN",
+        interact_end_event = "BABY_CATAPULT_END",
+        -- 骑乘姿势 + 每帧跟随投臂（都需按投臂模型微调）：
+        seat_offset = { -2.8, 1.0, 0.0 }, -- 宝宝相对投臂 socket_origin 的坐点偏移（臂上篮筐位置，多半要改）
+        seat_rotation = { 0, 90, 0 }, -- 叠加在朝向源上的固定角度偏移（度）：修正宝宝模型正方向与投臂正方向差 90°（同秋千）
+        seat_follow_orientation = true, -- 跟随朝向源实时朝向（宝宝随臂一起摆上去）
+        seat_orient_unit_name = "投石车投臂0", -- 朝向以这个单位为准（位置仍粘 facility.unit / 投臂本体）
+        seat_anim_id = 21013, -- 骑乘/坐姿动画（先复用秋千坐姿，可换）
+        -- 发射参数（CatapultLaunchService 读取）：
+        launch_target = { -142.51, 2.56, 40.27 }, -- 落点世界坐标（先写死，试玩调）
+        launch_delay = 0.25, -- 点击到脱臂的延迟：让宝宝随臂摆到接近顶点再飞
+        flight_duration = 1.2, -- 抛物线时长（越大越慢）
+        flight_arc_peak = 4.0, -- 抛物线拱高（越大抛得越高）
+        flight_hang = 0.4, -- 顶点悬停感 [0,1]
+    },
+    {
         -- 婴儿床：玩家把宝宝抱到床上放下 → 躺姿(动作49)绑床 → 随机弹出「换尿布/擦屁股」子需求。
         -- 玩家去尿布柜取对应道具、走到床边长按 progress_btn 换洗完成。整个玩法由 CribService 驱动，
         -- 这里只声明它是一条 crib 型设施需求（放下即触发、就近选空闲的一张床）。
@@ -534,10 +572,10 @@ Config.needs = {
         interact_begin_event = "BABY_CRIB_BEGIN",
         interact_end_event = "BABY_CRIB_END",
         -- 躺床姿势：复用 _seat_agent 每帧硬粘到床面 + force_play 保持躺姿动作。
-        seat_offset = { 0, 0.4, 0 },     -- 宝宝相对床的躺位偏移（按床模型微调，绑到床“底面中心”上方）
-        seat_rotation = { 0, 0, 0 },     -- 在床朝向上叠加的固定角度偏移（度）；宝宝朝向与床一致
-        seat_follow_orientation = true,  -- true=朝向跟随床（与床方向一致），可叠加 seat_rotation
-        seat_anim_id = 49,               -- 躺姿动作 id（不循环由 force_play 保持）；若 49 压不住待机可换成躺姿 AnimKey
+        seat_offset = { 0, 0.4, 0 },    -- 宝宝相对床的躺位偏移（按床模型微调，绑到床“底面中心”上方）
+        seat_rotation = { 0, 0, 0 },    -- 在床朝向上叠加的固定角度偏移（度）；宝宝朝向与床一致
+        seat_follow_orientation = true, -- true=朝向跟随床（与床方向一致），可叠加 seat_rotation
+        seat_anim_id = 49,              -- 躺姿动作 id（不循环由 force_play 保持）；若 49 压不住待机可换成躺姿 AnimKey
     },
     {
         id = "baby_car",

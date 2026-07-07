@@ -89,20 +89,32 @@ end
 ---@param need BabyNeedDef
 function FacilityService:_register_facility(need)
     local names = need.facility_names
+    local ids = need.facility_unit_ids
+    local registered = false
     if names and #names > 0 then
         for index = 1, #names do
             self:_register_facility_unit(need, names[index])
         end
-    else
+        registered = true
+    end
+    -- 也支持按“实体ID”注册（投石臂等只有 id 没有稳定名字的组件）。
+    if ids and #ids > 0 then
+        for index = 1, #ids do
+            self:_register_facility_unit(need, nil, GameAPI.get_unit(ids[index]))
+        end
+        registered = true
+    end
+    if not registered then
         self:_register_facility_unit(need, need.facility_name)
     end
 end
 
 ---@param need BabyNeedDef
 ---@param facility_name string|nil
+---@param unit_override Unit|nil 已解析的设施单位（按 id 注册时传入）
 ---@return BabyFacilityRecord
-function FacilityService:_register_facility_unit(need, facility_name)
-    local unit = facility_name and LuaAPI.query_unit(facility_name) or nil
+function FacilityService:_register_facility_unit(need, facility_name, unit_override)
+    local unit = unit_override or (facility_name and LuaAPI.query_unit(facility_name)) or nil
     local area = need.area_name and LuaAPI.query_unit(need.area_name) or nil
     local contact_area = need.contact_area_name and LuaAPI.query_unit(need.contact_area_name) or nil
 
@@ -126,6 +138,13 @@ function FacilityService:_register_facility_unit(need, facility_name)
         active_agent = nil,
     }
     self.facilities[#self.facilities + 1] = facility
+    -- 诊断：打出设施解析到的单位坐标，便于核对“投臂原点离放下点多远”。
+    if unit and unit.get_position then
+        local p = unit.get_position()
+        if p then
+            Log.info("facility registered", need.id, facility_name or "(by-id)", "pos", p.x, p.y, p.z)
+        end
+    end
     return facility
 end
 
@@ -376,9 +395,10 @@ function FacilityService:_configure_facility_unit(unit, need)
         return
     end
 
-    -- 载具/秋千座椅/婴儿床不挂玩家互动按钮：交互由“玩家把宝宝抱来放下”触发，避免玩家自己按键。
+    -- 载具/秋千座椅/婴儿床/投石车不挂玩家互动按钮：交互由“玩家把宝宝抱来放下”触发，避免玩家自己按键。
     -- 婴儿床的取物/换洗/扶正都走 CribService 的场景 UI，同样不需要单位自带的互动按钮。
-    if need.facility_kind == "vehicle" or need.facility_kind == "swing_seat" or need.facility_kind == "crib" then
+    if need.facility_kind == "vehicle" or need.facility_kind == "swing_seat"
+        or need.facility_kind == "crib" or need.facility_kind == "catapult" then
         return
     end
 
@@ -471,6 +491,11 @@ function FacilityService:nearest_match(pos, need, baby_unit)
     if best_dist and best_dist <= radius * radius then
         return best
     end
+    -- 诊断：有候选但距离超出接触半径 → 打出实际距离与半径，方便判断是加大 radius 还是投臂原点不对。
+    if best and best.def then
+        Log.info("facility match miss", best.def.id,
+            "dist", best_dist and math.sqrt(best_dist) or -1.0, "radius", radius)
+    end
     return nil
 end
 
@@ -505,6 +530,8 @@ function FacilityService:begin_interaction(agent, facility)
         self:_begin_vehicle_ride(agent, facility, duration)
     elseif self:_is_swing_seat(facility) then
         self:_begin_swing_seat(agent, facility, duration)
+    elseif self:is_catapult(facility) then
+        self:_begin_catapult(agent, facility)
     elseif self:is_crib(facility) then
         self:_begin_crib(agent, facility)
     else
@@ -568,10 +595,13 @@ function FacilityService:_sync_seat(agent, facility, token)
         end
         -- 朝向：seat_follow_orientation=true 时跟随座椅实时朝向（宝宝随秋千一起前后倾，
         -- 可叠加 seat_rotation 偏移）；否则用固定 seat_rotation（原静止秋千行为）。
+        -- 朝向来源默认取 facility.unit；若配了 seat_orient_unit_name（如投石车用“投石车投臂0”），
+        -- 则以那个单位的朝向为准（位置仍粘 facility.unit）。
+        local orient_src = facility.orient_unit or facility.unit
         if agent.unit.set_orientation then
             local rot = nil
-            if def.seat_follow_orientation and facility.unit.get_orientation then
-                local ok, srot = pcall(function() return facility.unit.get_orientation() end)
+            if def.seat_follow_orientation and orient_src and orient_src.get_orientation then
+                local ok, srot = pcall(function() return orient_src.get_orientation() end)
                 if ok and srot then
                     rot = srot
                     local off = MathX.to_quaternion(def.seat_rotation)
@@ -622,6 +652,12 @@ end
 ---@return boolean
 function FacilityService:_is_swing_seat(facility)
     return facility ~= nil and facility.def ~= nil and facility.def.facility_kind == "swing_seat"
+end
+
+---@param facility BabyFacilityRecord|nil
+---@return boolean
+function FacilityService:is_catapult(facility)
+    return facility ~= nil and facility.def ~= nil and facility.def.facility_kind == "catapult"
 end
 
 ---@param agent BabyAgent
@@ -715,6 +751,49 @@ function FacilityService:_end_swing_seat(agent, facility)
         end)
     end
     Log.info("swing seat end", facility.def.id, "baby", agent.index)
+end
+
+-- ===== 投石车：宝宝“骑”在投臂上等待发射 =====
+-- 与秋千座椅同一套骨架（复用 _seat_agent/_sync_seat 每帧硬粘到臂的 socket_origin + 跟随朝向），但：
+--   1) 不给臂施力——投臂摆动由编辑器运动器负责（表现）；
+--   2) 不按时长自动结束——等玩家点发射按钮，由 CatapultLaunchService 停跟随、抛物线发射后再结算。
+-- 宝宝是脚本按帧定位的运动学单位、且与臂关闭了碰撞，运动器的物理发射碰不到它。
+
+---@param agent BabyAgent
+---@param facility BabyFacilityRecord
+function FacilityService:_begin_catapult(agent, facility)
+    if not (facility.unit and agent.unit) then
+        Log.warn("catapult missing unit", facility.def.id)
+        return
+    end
+    -- 朝向来源：让宝宝坐姿朝向与“投石车投臂0”一致（位置仍粘 facility.unit / 投臂本体）。
+    if facility.def.seat_orient_unit_name and not facility.orient_unit then
+        facility.orient_unit = LuaAPI.query_unit(facility.def.seat_orient_unit_name)
+        if not facility.orient_unit then
+            Log.warn("catapult orient unit not found", facility.def.seat_orient_unit_name)
+        end
+    end
+    -- 锁住宝宝 AI/移动：每帧把它硬粘到投臂上，避免被待机/移动动画顶掉或被 AI 抢走。
+    if agent.lock_ride_move_state then
+        agent:lock_ride_move_state()
+    end
+    -- 关掉宝宝与投臂之间的碰撞：宝宝被硬粘到坐点，开着碰撞会互相顶、也会被运动器摆臂撞飞。
+    self:_set_seat_collision(agent, facility, false)
+    -- 坐姿动画 + 每帧跟随投臂坐点（_seat_agent 内部分配 seat_token 并起 _sync_seat）。
+    self:_seat_agent(agent, facility, nil)
+    Log.info("catapult seat begin", facility.def.id, "baby", agent.index)
+end
+
+---@param agent BabyAgent
+---@param facility BabyFacilityRecord
+function FacilityService:_end_catapult(agent, facility)
+    facility.seat_token = nil    -- 令牌失效：跟随循环下一拍自动停止（发射时已提前停过，这里幂等）
+    self:_stop_ride_anim(agent)  -- 停坐姿动画
+    if agent and agent.unlock_ride_move_state then
+        agent:unlock_ride_move_state()
+    end
+    self:_set_seat_collision(agent, facility, true) -- 恢复碰撞
+    Log.info("catapult seat end", facility.def.id, "baby", agent.index)
 end
 
 -- ===== 婴儿床：宝宝躺床（绑床 + 躺姿动作），换尿布/擦屁股玩法交给 CribService =====
@@ -1137,6 +1216,8 @@ function FacilityService:end_interaction(agent, facility)
         self:_end_vehicle_ride(agent, facility)
     elseif self:_is_swing_seat(facility) then
         self:_end_swing_seat(agent, facility)
+    elseif self:is_catapult(facility) then
+        self:_end_catapult(agent, facility)
     elseif self:is_crib(facility) then
         self:_end_crib(agent, facility)
     else

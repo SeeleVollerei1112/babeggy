@@ -55,6 +55,13 @@ function InteractingFacilityState:enter(context)
         return
     end
 
+    -- 投石车：宝宝骑在投臂上等玩家点发射，不按时长自动完成——由 CatapultLaunchService
+    -- 在发射落地后调 complete_facility_interaction 结算。
+    if agent.services.facility:is_catapult(facility) then
+        agent:set_status("等待发射")
+        return
+    end
+
     LuaAPI.call_delay_time(duration, function()
         if agent:is_in_state(agent.enum.BabyState.InteractingFacility) then
             agent:complete_facility_interaction(facility)

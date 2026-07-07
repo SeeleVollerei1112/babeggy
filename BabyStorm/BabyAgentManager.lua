@@ -12,6 +12,7 @@ local RoundService = require("BabyStorm.Services.RoundService")
 local BallRallyService = require("BabyStorm.Services.BallRallyService")
 local RpsService = require("BabyStorm.Services.RpsService")
 local CribService = require("BabyStorm.Services.CribService")
+local CatapultLaunchService = require("BabyStorm.Services.CatapultLaunchService")
 local BabySceneView = require("BabyStorm.View.BabySceneView")
 local BabyAgent = require("BabyStorm.Domain.BabyAgent")
 local GameViewModel = require("BabyStorm.Domain.GameViewModel")
@@ -32,6 +33,7 @@ local Log = require("Util.Log")
 ---@field ball_rally BallRallyService
 ---@field rps RpsService
 ---@field crib CribService
+---@field catapult CatapultLaunchService
 ---@field view BabySceneView
 ---@field triggers TriggerRegistry
 ---@field game_view_model GameViewModel
@@ -107,10 +109,13 @@ function BabyAgentManager:start()
     local ball_rally = BallRallyService.New(self.config, self.triggers, sessions)
     local rps = RpsService.New(self.config, self.triggers)
     local crib = CribService.New(self.config, self.triggers)
+    local catapult = CatapultLaunchService.New(self.config, self.triggers)
     -- crib 与 facility 互相引用：facility 在放下宝宝躺床后回调 crib:begin/end_session；
     -- crib 通过 facility 拿到所有床记录来绑场景 UI、读歪床状态。
     crib:set_facility_service(facility)
     facility:set_crib_service(crib)
+    -- catapult 需要 facility：发射时从 catapult 设施的 active_agent 找到骑在投臂上的宝宝。
+    catapult:set_facility_service(facility)
     local view = BabySceneView.New(self.config)
 
     self.services = {
@@ -126,6 +131,7 @@ function BabyAgentManager:start()
         ball_rally = ball_rally,
         rps = rps,
         crib = crib,
+        catapult = catapult,
         view = view,
         triggers = self.triggers,
         game_view_model = game_view_model,
@@ -145,6 +151,7 @@ function BabyAgentManager:start()
 
     ball_rally:start(self.agents)
     rps:start(self.agents)
+    catapult:start(self.agents)
 
     game_view_model:set_active_baby_count(#self.agents)
     round:start()
@@ -183,6 +190,9 @@ function BabyAgentManager:_tick(token)
     end
     if self.services and self.services.crib then
         self.services.crib:update(TICK_DT)
+    end
+    if self.services and self.services.catapult then
+        self.services.catapult:update(TICK_DT)
     end
 
     LuaAPI.call_delay_time(TICK_DT, function()
@@ -278,6 +288,9 @@ function BabyAgentManager:destroy()
     end
     if self.services and self.services.crib then
         self.services.crib:destroy()
+    end
+    if self.services and self.services.catapult then
+        self.services.catapult:destroy()
     end
 
     if self.triggers then
