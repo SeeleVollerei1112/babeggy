@@ -1,6 +1,7 @@
 local Class = require("BaseClass")
 local StateBase = require("BabyStorm.Domain.State.StateBase")
 local Intent = require("BabyStorm.Domain.BabyIntent")
+local Timer = require("BabyStorm.Core.Timer")
 
 -- 满足后的开心表现 + 结算事件，随后回到 Idle。
 ---@class SatisfiedState: StateBase
@@ -34,15 +35,12 @@ function SatisfiedState:enter(context)
         local result_delay = item and 3.0 or 1.5
         local happy_delay = result_delay + 3.0
         -- 满意事件发出 1.5 秒后再发物品/设施分类事件，分类事件之后再等 1.5 秒发开心事件。
-        LuaAPI.call_delay_time(result_delay, function()
-            if agent:is_in_state(agent.enum.BabyState.Satisfied) then
-                agent.services.task:emit_baby_satisfied(agent, target)
-            end
+        -- owner=self：状态 exit 时 StateBase 统一取消，不会有过期回调。
+        Timer.once(self, result_delay, function()
+            agent.services.task:emit_baby_satisfied(agent, target)
         end)
-        LuaAPI.call_delay_time(happy_delay, function()
-            if agent:is_in_state(agent.enum.BabyState.Satisfied) then
-                agent.services.task:emit_baby_happy(agent, target)
-            end
+        Timer.once(self, happy_delay, function()
+            agent.services.task:emit_baby_happy(agent, target)
         end)
         agent.services.score:award_satisfied(agent.last_role)
         if agent.services.difficulty then
@@ -57,13 +55,11 @@ function SatisfiedState:enter(context)
     if target and finish_delay < minimum_finish_delay then
         finish_delay = minimum_finish_delay
     end
-    LuaAPI.call_delay_time(finish_delay, function()
-        if agent:is_in_state(agent.enum.BabyState.Satisfied) then
-            if facility then
-                agent:finish_facility_satisfied(facility)
-            else
-                agent:finish_satisfied(item)
-            end
+    Timer.once(self, finish_delay, function()
+        if facility then
+            agent:finish_facility_satisfied(facility)
+        else
+            agent:finish_satisfied(item)
         end
     end)
 end

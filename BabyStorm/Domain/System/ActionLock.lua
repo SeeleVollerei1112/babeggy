@@ -15,6 +15,7 @@ local Class = require("BaseClass")
 ---@field _unit Unit|LifeEntity|nil
 ---@field _reasons table<string, boolean>
 ---@field _engaged boolean
+---@field _stop_handler fun()|nil
 local ActionLock = Class("BabyActionLock")
 
 ---@param unit Unit|LifeEntity|nil
@@ -22,6 +23,14 @@ function ActionLock:Ctor(unit)
     self._unit = unit
     self._reasons = {}
     self._engaged = false
+    self._stop_handler = nil
+end
+
+---注入停步回调（由 BabyAgent 注入 movement:force_stop）：
+---停步/停 AI 的引擎调用统一收敛到 MovementSystem，本锁只负责 BUFF 与速度的边沿控制。
+---@param fn fun()
+function ActionLock:set_stop_handler(fn)
+    self._stop_handler = fn
 end
 
 ---@param unit Unit|LifeEntity|nil
@@ -111,15 +120,9 @@ end
 
 ---@private
 function ActionLock:_stop_move()
-    local unit = self._unit
-    if not unit then
-        return
-    end
-    if unit.stop_ai then
-        pcall(function() unit.stop_ai() end)
-    end
-    if unit.ai_command_stop_move then
-        pcall(function() unit.ai_command_stop_move(0.1) end)
+    -- 不再自己调 stop_ai/ai_command_stop_move：全工程只允许 MovementSystem 碰 AI 开关。
+    if self._stop_handler then
+        self._stop_handler()
     end
 end
 

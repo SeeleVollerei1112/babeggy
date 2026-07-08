@@ -1,6 +1,7 @@
 local Class = require("BaseClass")
 local Enum = require("BabyStorm.Config.BabyStormEnum")
 local Intent = require("BabyStorm.Domain.BabyIntent")
+local Timer = require("BabyStorm.Core.Timer")
 local Log = require("Util.Log")
 
 -- 行为状态基类。每个状态是「解决当前需求的一段流程」。
@@ -52,25 +53,29 @@ end
 ---@param context BabyStateContext|nil
 function StateBase:exit(context)
     self._active = false
-    -- 杜绝跨状态泄漏：行为锁随状态退出而释放。
+    -- 杜绝跨状态泄漏：行为锁随状态退出而释放，状态名下的定时器一并取消
+    -- （状态内一律用 Timer.once/every(self, ...)，回调无需再做 is_in_state 过期守卫）。
     self.agent.action_lock:release(LOCK_REASON)
+    Timer.cancel_all(self)
 end
 
--- 声明本状态的意图。四字段全写，由 Movement/Animation 下一帧 reconcile。
----@param opts { move_mode: string, anim_base: string|nil, anim_overlay: string|nil, anim_param: BabyAnimParam|nil, action_lock: boolean|nil }
+-- 声明本状态的意图。四字段全写，由 Movement/Animation 立即对齐。
+---@param opts { move_mode: string, anim_base: string|nil, anim_overlay: string|nil, anim_param: BabyAnimParam|nil, wander: BabyWanderParams|nil, action_lock: boolean|nil }
 function StateBase:set_intent(opts)
     local agent = self.agent
     agent.move_mode = opts.move_mode or Intent.MoveMode.Stop
     agent.anim_base = opts.anim_base or Intent.AnimBase.Idle
     agent.anim_overlay = opts.anim_overlay
     agent.anim_param = opts.anim_param
+    -- Wander 参数（nil 即清空——MovementSystem 落回缺省巡逻参数，等价历史 Idle 行为）。
+    agent.wander_params = opts.wander
 
     if opts.action_lock then
         agent.action_lock:acquire(LOCK_REASON)
     else
         agent.action_lock:release(LOCK_REASON)
     end
-    -- 强制 Movement/Animation 下一帧按新意图重新对齐。
+    -- 强制 Movement/Animation 立即按新意图重新对齐。
     agent:invalidate_systems()
 end
 

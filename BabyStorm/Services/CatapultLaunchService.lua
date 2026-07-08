@@ -73,8 +73,34 @@ function CatapultLaunchService:start(_agents)
     self.triggers:global({ EVENT.EUI_NODE_TOUCH_EVENT, UINodes.launcher_btn, TOUCH_CLICK }, function()
         self:on_launch_pressed()
     end)
+
+    -- [PROBE 临时] 验证「点击落点区组件能否拿到世界坐标」。核实后整段删除。
+    self:_probe_landing_touch(1497478835)
+
     Log.info("catapult launch service ready")
     return true
+end
+
+-- [PROBE 临时] 给落点区组件挂 SPEC_OBSTACLE_TOUCH_BEGIN，把点击世界坐标打进日志。
+-- 结论：若日志随点击位置变化 → touch_pos 是真实命中点，方案可行；
+--       若不触发 → 组件未开启「可点击」；若坐标恒定 → 只给了组件中心，需改射线方案。
+---@param unit_id integer
+function CatapultLaunchService:_probe_landing_touch(unit_id)
+    local unit = GameAPI.get_unit(unit_id)
+    if not unit then
+        Log.warn("[PROBE] 落点区组件不存在", unit_id)
+        return
+    end
+    local touchable = unit.is_touchable and unit.is_touchable()
+    Log.info("[PROBE] 落点区组件已找到", unit_id, "is_touchable=", tostring(touchable))
+    self.triggers:unit(unit, { EVENT.SPEC_OBSTACLE_TOUCH_BEGIN }, function(_, _, data)
+        local p = data and data.touch_pos
+        if p then
+            Log.info("[PROBE] 点击落点区 touch_pos =", p.x, p.y, p.z)
+        else
+            Log.info("[PROBE] 点击落点区触发了，但 data.touch_pos 为空", tostring(data))
+        end
+    end)
 end
 
 -- 把发射按钮画布贴到投石车组件上（照 CribService 贴柜子UI 的做法），让玩家看得到按钮。

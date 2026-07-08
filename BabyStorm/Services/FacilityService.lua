@@ -559,12 +559,10 @@ function FacilityService:_seat_agent(agent, facility, duration)
 
     local play_time = duration or 0.0
 
-    -- 先强制播放坐姿动画（force_play 可覆盖 AI 的站立/待机动画）
-    if def.seat_anim_id and agent.unit.force_play_animation_by_anim_key then
-        local anim_ok = pcall(function()
-            agent.unit.force_play_animation_by_anim_key(def.seat_anim_id, 0.0, play_time, 1.0, true)
-        end)
-        Log.info("facility anim force", def.id, agent.index, "anim", def.seat_anim_id, "ok", anim_ok)
+    -- 先强制播放坐姿动画（force_play 可覆盖 AI 的站立/待机动画）；引擎调用收敛在 AnimationSystem。
+    if def.seat_anim_id then
+        agent.animation:force_play({ mode = "anim_key", id = def.seat_anim_id, duration = play_time }, "facility")
+        Log.info("facility anim force", def.id, agent.index, "anim", def.seat_anim_id)
     end
 
     -- 再把活体单位摆到座位点（绑定 API 在本环境不挪动活体单位，改用按帧定位跟随）
@@ -629,12 +627,7 @@ end
 ---@param agent BabyAgent
 ---@param facility BabyFacilityRecord
 function FacilityService:_unseat_agent(agent, facility)
-    local def = facility.def
-    if agent.unit and def.seat_anim_id and agent.unit.stop_anim then
-        pcall(function()
-            agent.unit.stop_anim()
-        end)
-    end
+    agent.animation:release("facility")
     if facility.unit and facility.bind_id and facility.unit.unbind_model then
         pcall(function()
             facility.unit.unbind_model(facility.bind_id)
@@ -1031,34 +1024,27 @@ function FacilityService:_start_ride_anim(agent, facility, duration)
     local def = facility.def
     local anim_key = def.vehicle_ride_anim_key
     local body_anim = def.vehicle_ride_anim_id
-    if not (agent.unit and (anim_key or body_anim)) then
+    if not (anim_key or body_anim) then
         return
     end
-    -- 清掉 AI 移动可能屏蔽的动画，确保骑行动作能播出来
-    if agent.unit.clear_banned_anim then
-        pcall(function() agent.unit.clear_banned_anim() end)
-    end
     local play_time = (duration or 0) + 0.0
-    if anim_key and agent.unit.force_play_animation_by_anim_key then
+    local param
+    if anim_key then
         -- 首选：AnimKey + 强制播放，长期保持动态骑行姿势，不被待机顶掉
-        pcall(function() agent.unit.force_play_animation_by_anim_key(anim_key, 0.0, play_time, 1.0, true) end)
-    elseif body_anim and agent.unit.play_body_anim_by_id then
+        param = { mode = "anim_key", id = anim_key, duration = play_time }
+    else
         -- 退路：全身动作预设，约 1 秒后会被引擎切回待机，仅占位（需要 AnimKey 才能持久）
-        pcall(function() agent.unit.play_body_anim_by_id(body_anim, 0.0, play_time, true) end)
+        param = { mode = "body_id", id = body_anim, duration = play_time }
     end
+    agent.animation:force_play(param, "facility")
 end
 
 ---@param agent BabyAgent
 function FacilityService:_stop_ride_anim(agent)
-    if not agent or not agent.unit then
+    if not agent then
         return
     end
-    -- 与 _start_ride_anim 的 force_play 对应，优先 stop_anim（秋千坐姿同款停法）
-    if agent.unit.stop_anim then
-        pcall(function() agent.unit.stop_anim() end)
-    elseif agent.unit.stop_play_body_anim then
-        pcall(function() agent.unit.stop_play_body_anim() end)
-    end
+    agent.animation:release("facility")
 end
 
 ---@param vehicle Unit

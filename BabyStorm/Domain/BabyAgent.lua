@@ -6,6 +6,7 @@ local ActionLock = require("BabyStorm.Domain.System.ActionLock")
 local MovementSystem = require("BabyStorm.Domain.System.MovementSystem")
 local AnimationSystem = require("BabyStorm.Domain.System.AnimationSystem")
 local NeedRuntime = require("BabyStorm.Domain.System.NeedRuntime")
+local Timer = require("BabyStorm.Core.Timer")
 local RoleUtil = require("Util.RoleUtil")
 local Rand = require("Util.Rand")
 local Log = require("Util.Log")
@@ -47,6 +48,7 @@ local Log = require("Util.Log")
 ---@field anim_param BabyAnimParam|nil
 ---@field move_target Vector3|nil
 ---@field pickup_target BabyItemRecord|nil
+---@field wander_params BabyWanderParams|nil
 ---@field states table<integer, StateBase>
 ---@field state_list StateBase[]
 ---@field active_state StateBase|nil
@@ -59,7 +61,7 @@ local Log = require("Util.Log")
 ---@field need_timeout_bonus_seconds integer
 ---@field timeout_action_bonus_seconds integer
 ---@field active_facility BabyFacilityRecord|nil
----@field _hold_remaining Fixed
+---@field _hold_timer TimerHandle|nil
 ---@field destroyed boolean
 local BabyAgent = Class("BabyAgent")
 
@@ -80,6 +82,11 @@ function BabyAgent:Ctor(index, unit, services, config)
     self.movement = MovementSystem.New(self)
     self.animation = AnimationSystem.New(self)
     self.need_runtime = NeedRuntime.New()
+    -- ActionLock 的停步动作委托给 MovementSystem（全工程唯一 stop_ai/停移动处）。
+    -- 注意构造顺序：必须先建好 movement 再注入。
+    self.action_lock:set_stop_handler(function()
+        self.movement:force_stop()
+    end)
 
     -- 意图字段（默认停 + 待机）
     self.move_mode = Intent.MoveMode.Stop
@@ -88,6 +95,7 @@ function BabyAgent:Ctor(index, unit, services, config)
     self.anim_param = nil
     self.move_target = nil
     self.pickup_target = nil
+    self.wander_params = nil
 
     -- 状态机
     self.states = {}
@@ -105,7 +113,7 @@ function BabyAgent:Ctor(index, unit, services, config)
     self.timeout_action_bonus_seconds = 0
     self.active_facility = nil
 
-    self._hold_remaining = 0.0
+    self._hold_timer = nil
     self.destroyed = false
 end
 
@@ -148,35 +156,21 @@ function BabyAgent:update(dt)
         return
     end
 
-    -- 1. 需求倒计时
-    if self.current_need and self.need_runtime:is_active() then
-        local evt = self.need_runtime:update(dt)
-        if evt.timed_out then
-            self:enter_state(Enum.BabyState.Cry, { reason = "need_timeout" }, true)
-            return
-        elseif evt.ticked then
-            if self:is_in_state(Enum.BabyState.Idle) or self:is_in_state(Enum.BabyState.Carried) then
-                self:set_status(self:_format_need_countdown(self.need_runtime:get_remaining()))
-            end
-        end
-    end
+    -- 需求倒计时 / 放下冻结已事件化（NeedRuntime 回调 / Timer.once），不再逐帧轮询。
 
-    -- 2. 放下冻结计时
-    self:_update_hold(dt)
-
-    -- 3. 行为状态 phase 推进
+    -- 1. 行为状态 phase 推进
     if self.active_state and self.active_state:is_active() then
         self.active_state:update(dt)
     end
 
-    -- 4. 唯一改位置处
+    -- 2/3. Movement / Animation 已在 invalidate() 时立即对齐；这两个调用只是
+    -- 「意图与已应用状态漂移时补对齐」的空转兜底，Phase 6 摘除。
     self.movement:reconcile(dt)
-    -- 5. 唯一播动画处
     self.animation:reconcile(dt)
-    -- 6. 表现层由 ViewModel 绑定被动刷新（set_status 即触发），无需在此轮询
+    -- 表现层由 ViewModel 绑定被动刷新（set_status 即触发），无需在此轮询
 end
 
--- 强制 Movement / Animation 下一帧按当前意图重新对齐。
+-- 强制 Movement / Animation 立即按当前意图重新对齐。
 function BabyAgent:invalidate_systems()
     self.movement:invalidate()
     self.animation:invalidate()
@@ -230,7 +224,29 @@ function BabyAgent:choose_next_need()
     self.view_model:set_need(self.current_need)
     local seconds = self:get_need_timeout_seconds()
     Log.info("baby", self.index, "need", self.current_need.id, "timeout", seconds)
-    self.need_runtime:start(seconds)
+    self:_start_need_countdown(seconds)
+end
+
+-- 需求倒计时（事件驱动）：每整秒刷新倒计时文案，归零切 Cry。
+---@private
+---@param seconds integer
+function BabyAgent:_start_need_countdown(seconds)
+    self.need_runtime:start(seconds, {
+        on_tick = function(remaining)
+            if self.destroyed then
+                return
+            end
+            if self:is_in_state(Enum.BabyState.Idle) or self:is_in_state(Enum.BabyState.Carried) then
+                self:set_status(self:_format_need_countdown(remaining))
+            end
+        end,
+        on_timeout = function()
+            if self.destroyed then
+                return
+            end
+            self:enter_state(Enum.BabyState.Cry, { reason = "need_timeout" }, true)
+        end,
+    })
 end
 
 function BabyAgent:show_current_need()
@@ -305,27 +321,23 @@ end
 
 ---@param duration Fixed
 function BabyAgent:hold_movement(duration)
-    self._hold_remaining = duration
+    -- 重复调用视为重置冻结时长：只换定时器，锁保持（acquire 幂等），避免解锁/再锁的引擎抖动。
+    Timer.cancel(self._hold_timer)
     self.action_lock:acquire("hold")
     self.movement:invalidate()
-end
-
----@param dt Fixed
-function BabyAgent:_update_hold(dt)
-    if self._hold_remaining <= 0 then
-        return
-    end
-    self._hold_remaining = self._hold_remaining - dt
-    if self._hold_remaining <= 0 then
-        self._hold_remaining = 0.0
+    self._hold_timer = Timer.once(self, duration, function()
+        self._hold_timer = nil
         self.action_lock:release("hold")
         self.movement:invalidate()
-    end
+    end)
 end
 
 function BabyAgent:cancel_movement_hold()
-    if self._hold_remaining > 0 or self.action_lock:has("hold") then
-        self._hold_remaining = 0.0
+    if self._hold_timer then
+        Timer.cancel(self._hold_timer)
+        self._hold_timer = nil
+    end
+    if self.action_lock:has("hold") then
         self.action_lock:release("hold")
         self.movement:invalidate()
     end
@@ -595,10 +607,8 @@ function BabyAgent:complete_item_obtained(item, count)
     self:select_equipped_slot()
     self.services.item:remove(item)
     self:cancel_need_countdown()
-    LuaAPI.call_delay_time(1.5, function()
-        if not self.destroyed then
-            self.services.task:emit_baby_pick_item(self, item, count or 1)
-        end
+    Timer.once(self, 1.5, function()
+        self.services.task:emit_baby_pick_item(self, item, count or 1)
     end)
     self:enter_state(Enum.BabyState.Satisfied, { item = item }, true)
 end
@@ -622,18 +632,17 @@ function BabyAgent:reject_wrong_item(item)
     self.anim_base = Intent.AnimBase.Idle
     self:invalidate_systems()
     self:select_equipped_slot()
-    LuaAPI.call_delay_time(1.5, function()
-        if not self.destroyed and self.is_rejecting then
+    Timer.once(self, 1.5, function()
+        -- is_rejecting 复查：期间可能被抱起/结算打断 reject 流程。
+        if self.is_rejecting then
             self.services.task:emit_baby_pick_item(self, item, 1)
         end
     end)
     self:set_status("咦？不是这个…")
 
-    LuaAPI.call_delay_time(self.config.baby.reject_hold_delay, function()
-        if self.destroyed then
-            return
-        end
+    Timer.once(self, self.config.baby.reject_hold_delay, function()
         if item.equipment then
+            -- 装备单位可能已被回收销毁，保留 pcall。
             pcall(function()
                 if item.equipment.set_droppable then
                     item.equipment.set_droppable(true)
@@ -645,10 +654,7 @@ function BabyAgent:reject_wrong_item(item)
         end
         self:set_status("不要这个！")
 
-        LuaAPI.call_delay_time(self.config.baby.reject_throw_delay, function()
-            if self.destroyed then
-                return
-            end
+        Timer.once(self, self.config.baby.reject_throw_delay, function()
             self.is_rejecting = false
             self:enter_upset({ item = item, reason = "wrong_item" })
         end)
@@ -680,7 +686,7 @@ function BabyAgent:fail_facility_interaction(facility)
     self.services.facility:end_interaction(self, facility)
     self.active_facility = nil
     if self.current_need then
-        self.need_runtime:start(self:get_need_timeout_seconds())
+        self:_start_need_countdown(self:get_need_timeout_seconds())
     end
     self:enter_upset({ reason = "facility_interrupted" })
 end
@@ -817,14 +823,17 @@ function BabyAgent:destroy()
     self.pickup_target = nil
     self.is_rejecting = false
     self.active_facility = nil
-    self._hold_remaining = 0.0
 
     if self.active_state and self.active_state:is_active() then
         self.active_state:exit(nil)
     end
     self.need_runtime:cancel()
+    self.movement:cleanup()
     self.animation:cleanup()
     self.action_lock:release_all()
+    -- 放下冻结 / 延迟结算等 owner=self 的定时器一次清场。
+    Timer.cancel_all(self)
+    self._hold_timer = nil
 
     if self.view_model then
         self.view_model:clear()

@@ -10,6 +10,7 @@ BabyIntent.MoveMode = {
     MoveToTarget = "MoveToTarget", -- 走向 agent.move_target（坐标）
     PickupTarget = "PickupTarget", -- 走向并捡起 agent.pickup_target（装备）
     Carried = "Carried",           -- 被举起：引擎驱动，逻辑不主动移动
+    Scripted = "Scripted",         -- 位移由 Driver 接管（脚本轨迹/发射等）：MovementSystem 不发任何移动指令，只做 AI 开关簿记（本阶段暂无使用方）
 }
 
 ---@enum BabyAnimBase

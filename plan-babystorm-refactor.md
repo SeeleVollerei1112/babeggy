@@ -62,12 +62,13 @@
 **目标**:AI 开关所有权归一,`ensure_ai` 具备删除条件;意图词汇表补齐,反 reconcile 轮询。
 
 **主要任务**:
-- [ ] MovementSystem:`Wander` 参数化(`{anchor, radius, speed_ratio, interval}`),覆盖原地驻留(speed=0)、配对小步挪动、give_up 闲逛三种用法
-- [ ] MovementSystem:新增 `Scripted` 模式——位移由 Driver 接管,但 stop_ai/start_ai 簿记仍归本系统;暴露 `perform(action)` 语义接口(lift/drop/jump/directional_move),内部处理 AI 开关,供状态层调用
-- [ ] AnimationSystem:暴露 `force_play(param, reason)` / `release(reason)`,内部续命定时器改 `Timer.every`(owner=system);Ride/Seat 姿势收归此处
-- [ ] Movement/Animation 的 reconcile 改为 `invalidate()` 时立即执行 + 各自内部按需挂 Timer(Wander 换点、动画续命);`BabyAgent:update` 中的每帧 reconcile 调用保留但变为空转兜底(Phase 6 删 tick 时一并摘除)
-- [ ] NeedRuntime 改 1s `Timer.every`(owner=agent),产出 ticked/timed_out 回调,`BabyAgent:update` 对应段落下线
-- [ ] 删除 `RpsService.ensure_ai`(RPS 未重写前,先让其走 MovementSystem.perform 过渡)
+- [x] MovementSystem:`Wander` 参数化(`{anchor, radius, speed_ratio, interval, threshold}`),覆盖原地驻留(speed=0)、配对小步挪动、give_up 闲逛三种用法(RPS 两处自驱移动循环已删,改写 Wander 意图)
+- [x] MovementSystem:新增 `Scripted` 模式(仅枚举+空处理,Phase 3/4 接 Driver);暴露 `perform(action)` 语义接口(release_lift/jump/directional_move/stop_move),内部处理 AI 开关;ActionLock 停步改经 BabyAgent 注入的回调转发,start_ai/stop_ai 全库仅 MovementSystem
+- [x] AnimationSystem:暴露 `force_play(param, reason)` / `release(reason)`(外部强制层,优先于意图层),续命定时器改 `Timer.every`(owner=system);FacilityService 坐姿/骑行 4 处动画直调收编
+- [x] Movement/Animation 的 reconcile 改为 `invalidate()` 时立即执行 + 各自内部按需挂 Timer(Wander 换点、动画续命、取物速度重申);`BabyAgent:update` 中的每帧 reconcile 调用保留但变为空转兜底(Phase 6 删 tick 时一并摘除)
+- [x] NeedRuntime 改 1s `Timer.every`(owner=runtime),产出 on_tick/on_timeout 回调,`BabyAgent:update` 对应段落下线;放下冻结(hold)同步改 `Timer.once`
+- [x] 删除 `RpsService.ensure_ai`(RPS 未重写前,先让其走 MovementSystem.perform 过渡);独自满足松手后加 Finishing 隔一拍收尾(invalidate 即时化后,同帧 stop_ai 会作废松手指令)
+- [x] (超纲收编,已裁决)StateBase:exit 统一 `Timer.cancel_all(self)`;Upset/Satisfied 的无主 call_delay_time 改 `Timer.once(owner=state)`,过期守卫删除
 
 **验收标准**:
 - WHEN 全文搜索 `stop_ai|start_ai`,THEN 仅 `MovementSystem.lua` 命中
@@ -162,8 +163,8 @@
 
 | Phase | 名称 | 状态 | 依赖 |
 |-------|------|------|------|
-| 1 | 地基(Timer/Rand/MathX/Drivers) | 🔄 进行中(代码完成,待试玩验收) | 无 |
-| 2 | System 事件化 | ⬜ 未开始 | Phase 1 |
+| 1 | 地基(Timer/Rand/MathX/Drivers) | 🔄 代码完成,冒烟通过,待人工试玩验收 | 无 |
+| 2 | System 事件化 | 🔄 代码完成,冒烟通过(2026-07-08 零报错),待人工试玩验收 | Phase 1 |
 | 3 | 设施交互立体化 | ⬜ 未开始 | Phase 2 |
 | 4 | 小游戏状态化(RPS→BallRally) | ⬜ 未开始 | Phase 3 |
 | 5 | Crib 拆分 | ⬜ 未开始 | Phase 3 |

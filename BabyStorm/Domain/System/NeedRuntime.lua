@@ -1,38 +1,55 @@
 local Class = require("BaseClass")
+local Timer = require("BabyStorm.Core.Timer")
 
--- 需求运行时：持有「当前需求的耐心倒计时」并按 tick 推进（替代自调度的 call_delay_time）。
+-- 需求运行时：持有「当前需求的耐心倒计时」，由 Timer 每秒事件驱动（替代逐帧轮询累计）。
 -- 需求数据本身仍由 NeedService/NeedResolver 提供；本类只管当前需求的生命周期计时。
 --
 -- 用法：
---   start(seconds)      开始倒计时
---   update(dt) -> evt   每 tick 调用；返回 { ticked=bool, timed_out=bool }
---                       ticked    = 跨过了一个整秒（用于刷新气泡倒计时）
---                       timed_out = 倒计时归零（用于切 Cry 状态）
---   cancel()            停止倒计时（需求被满足/进入长互动时）
---   get_remaining()     剩余整秒，用于状态展示
+--   start(seconds, callbacks)  开始倒计时。每整秒回调 on_tick(remaining)（剩余 >0 时，
+--                              用于刷新气泡倒计时）；归零时先 cancel 再回调 on_timeout
+--                              （用于切 Cry 状态；先 cancel 保证回调里可安全地重新 start）。
+--   cancel()                   停止倒计时（需求被满足/进入长互动时）
+--   get_remaining()            剩余整秒，用于状态展示
+
+---@class NeedRuntimeCallbacks
+---@field on_tick fun(remaining: integer)
+---@field on_timeout fun()
+
 ---@class NeedRuntime
 ---@field _active boolean
 ---@field _remaining integer
----@field _accum Fixed
+---@field _timer TimerHandle|nil
 local NeedRuntime = Class("BabyNeedRuntime")
 
 function NeedRuntime:Ctor()
     self._active = false
     self._remaining = 0
-    self._accum = 0.0
+    self._timer = nil
 end
 
 ---@param seconds integer
-function NeedRuntime:start(seconds)
+---@param callbacks NeedRuntimeCallbacks
+function NeedRuntime:start(seconds, callbacks)
+    self:cancel()
     self._active = true
     self._remaining = seconds
-    self._accum = 0.0
+    self._timer = Timer.every(self, 1.0, function()
+        self._remaining = self._remaining - 1
+        if self._remaining <= 0 then
+            -- 先 cancel 再回调：on_timeout 里往往会切状态/重新开始倒计时。
+            self:cancel()
+            callbacks.on_timeout()
+        else
+            callbacks.on_tick(self._remaining)
+        end
+    end)
 end
 
 function NeedRuntime:cancel()
     self._active = false
     self._remaining = 0
-    self._accum = 0.0
+    Timer.cancel(self._timer)
+    self._timer = nil
 end
 
 ---@return boolean
@@ -46,32 +63,6 @@ function NeedRuntime:get_remaining()
         return nil
     end
     return self._remaining
-end
-
----@param dt Fixed
----@return { ticked: boolean, timed_out: boolean }
-function NeedRuntime:update(dt)
-    if not self._active then
-        return { ticked = false, timed_out = false }
-    end
-
-    self._accum = self._accum + dt
-    if self._accum < 1.0 then
-        return { ticked = false, timed_out = false }
-    end
-
-    -- 跨过整秒边界（一帧通常只跨一个，循环兜底极端 dt）。
-    local ticked = false
-    while self._accum >= 1.0 and self._active do
-        self._accum = self._accum - 1.0
-        self._remaining = self._remaining - 1
-        ticked = true
-        if self._remaining <= 0 then
-            self._active = false
-            return { ticked = ticked, timed_out = true }
-        end
-    end
-    return { ticked = ticked, timed_out = false }
 end
 
 return NeedRuntime

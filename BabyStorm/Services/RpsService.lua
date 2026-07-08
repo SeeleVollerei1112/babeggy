@@ -3,6 +3,7 @@ local UnitUtil = require("Util.UnitUtil")
 local RoleUtil = require("Util.RoleUtil")
 local Intent = require("BabyStorm.Domain.BabyIntent")
 local Rand = require("Util.Rand")
+local Timer = require("BabyStorm.Core.Timer")
 local Log = require("Util.Log")
 
 local State = {
@@ -12,6 +13,7 @@ local State = {
     Tossing = "tossing",    -- 脚本把两颗骰子从当前握持位置垂直升到抛物顶点（只控位移，无水平偏移）。
     Settling = "settling",  -- 到达顶点后交还物理：骰子在真实重力下自由下落，可被顶/被撞，轮询静止再结算。
     GivingUp = "giving_up", -- 玩家超时未响应：宝宝抱着骰子随意走动一会儿，再放下骰子按满足收尾。
+    Finishing = "finishing", -- 独自满足的松手已发出，隔一拍再收尾（update 不驱动、_scan 不配对）。
 }
 
 local LOCK = "rps"
@@ -29,14 +31,8 @@ local BEATS = { rock = "scissors", scissors = "paper", paper = "rock" }
 
 local RpsService = Class("RpsService")
 
--- 部分 ai_command_* 在 AI 被 stop_ai() 关闭后不会生效（ActionLock/MovementSystem 的
--- Stop 模式都会调用 stop_ai，且解锁并不会自动 start_ai）。发指令前先确保 AI 是开着的。
----@param unit Unit|LifeEntity
-local function ensure_ai(unit)
-    if unit.start_ai then
-        pcall(function() unit.start_ai() end)
-    end
-end
+-- 需要「先开 AI 再发指令」的动作一律走 agent.movement:perform(...)：
+-- 「部分 ai_command_* 在 stop_ai 后静默不生效」的引擎坑位说明见 MovementSystem.perform。
 
 ---@param config BabyStormConfig
 ---@param triggers TriggerRegistry
@@ -61,10 +57,8 @@ function RpsService:Ctor(config, triggers)
     self.baby_missing_elapsed = 0.0
     self.wait_elapsed = 0.0
     self.face_target = nil
-    -- 配对期间小步挪动（减少 AI 生硬感）的运行时字段。
+    -- 配对期间小步挪动（减少 AI 生硬感）：是否处于参数化 Wander 模式。
     self.pairing_mobile = false
-    self.fidget_anchor = nil
-    self.fidget_timer = 0.0
     self.elapsed = 0.0
     self.flight = {}
     self.floor_y = nil
@@ -77,7 +71,6 @@ function RpsService:Ctor(config, triggers)
     -- 玩家超时未响应，宝宝抱着骰子闲逛用的运行时字段。
     self.giveup_elapsed = 0.0
     self.giveup_duration = 0.0
-    self.giveup_move_timer = 0.0
 end
 
 ---@param agents BabyAgent[]
@@ -250,7 +243,6 @@ function RpsService:_update_wait_player(dt)
     if player_present then
         self:_set_face_target(candidate)
         self:_set_pairing_mobile(true)
-        self:_drive_pairing_fidget(dt)
     else
         self:_set_face_target(nil)
         self:_set_pairing_mobile(false)
@@ -286,7 +278,8 @@ end
 
 -- 进入/退出“配对小步挪动”模式（仅在玩家进入配对范围时开启，配对达成或玩家离开即关闭）。
 -- 开启：释放移动锁（同 give_up/settle 做法，锁定期 AI 停、移速为 0 无法走位）、保持 busy、
---       move_mode=Stop 由本服务自行下发小步走位；以当前位置为锚点，只在小半径内游走。
+--       写参数化 Wander 意图，走位由 MovementSystem 执行——以当前位置为锚点，只在小
+--       半径内游走：半径很小，保证宝宝始终在玩家配对范围内、不会走开导致配对失败。
 -- 关闭：停下走位并重新锁住，冻回原地。
 ---@param mobile boolean
 function RpsService:_set_pairing_mobile(mobile)
@@ -300,48 +293,22 @@ function RpsService:_set_pairing_mobile(mobile)
     end
     if mobile then
         agent.action_lock:release(LOCK)
-        agent.move_mode = Intent.MoveMode.Stop
-        agent:invalidate_systems()
         local pos = agent.unit and agent.unit.get_position and agent.unit.get_position() or nil
-        self.fidget_anchor = pos
-        self.fidget_timer = 0.0 -- 立刻走第一步
-    else
-        if agent.unit and agent.unit.ai_command_stop_move then
-            pcall(function() agent.unit.ai_command_stop_move(0.1) end)
-        end
-        agent.action_lock:acquire(LOCK)
+        agent.move_mode = Intent.MoveMode.Wander
+        agent.wander_params = {
+            anchor = pos,
+            radius = self.cfg.pairing_fidget_radius,
+            speed_ratio = 1.0,
+            interval = self.cfg.pairing_fidget_interval,
+            threshold = 0.3,
+        }
         agent:invalidate_systems()
-        self.fidget_anchor = nil
-    end
-end
-
--- 配对小步挪动：每隔 pairing_fidget_interval，以锚点为中心在 pairing_fidget_radius 半径内
--- 随机取一点走过去。半径很小，保证宝宝始终在玩家配对范围内、不会走开导致配对失败。
----@param dt Fixed
-function RpsService:_drive_pairing_fidget(dt)
-    if not (self.pairing_mobile and self.fidget_anchor) then
-        return
-    end
-    local unit = self.agent and self.agent.unit or nil
-    if not unit then
-        return
-    end
-    self.fidget_timer = self.fidget_timer - dt
-    if self.fidget_timer > 0.0 then
-        return
-    end
-    self.fidget_timer = self.cfg.pairing_fidget_interval
-    local radius = self.cfg.pairing_fidget_radius
-    local target = math.Vector3(
-        self.fidget_anchor.x + Rand.signed() * radius,
-        self.fidget_anchor.y,
-        self.fidget_anchor.z + Rand.signed() * radius
-    )
-    if unit.start_move_to_pos_with_threshold then
-        ensure_ai(unit)
-        pcall(function()
-            unit.start_move_to_pos_with_threshold(target, 0.3, 0.5)
-        end)
+    else
+        agent.movement:perform("stop_move")
+        agent.action_lock:acquire(LOCK)
+        agent.move_mode = Intent.MoveMode.Stop
+        agent.wander_params = nil
+        agent:invalidate_systems()
     end
 end
 
@@ -417,12 +384,11 @@ function RpsService:_begin_toss()
     -- 抛掷开始，宝宝要能自由转身/走位/跳跃，解除配对阶段的面向锁定。
     self:_set_face_target(nil)
     -- 宝宝松手（播放抛出动作）；力已归零，不会向前甩。ai_command_lift 和 jump/start_move
-    -- 一样受 AI 开关影响——这里仍处于 action_lock 锁定期（AI 还没被重新打开），不先
-    -- ensure_ai 的话这次松手会静默失效：骰子会一直挂在手上被引擎的举起吸附强制跟随，
-    -- 视觉上看起来像是"抱着骰子跑"而不是被抛出去。
-    if agent.unit.is_lift_status and agent.unit.is_lift_status() and agent.unit.ai_command_lift then
-        ensure_ai(agent.unit)
-        pcall(function() agent.unit.ai_command_lift() end)
+    -- 一样受 AI 开关影响——这里仍处于 action_lock 锁定期（AI 还没被重新打开），不先开 AI
+    -- 的话这次松手会静默失效：骰子会一直挂在手上被引擎的举起吸附强制跟随，
+    -- 视觉上看起来像是"抱着骰子跑"而不是被抛出去。perform 内部先 start_ai 再松手。
+    if agent.unit.is_lift_status and agent.unit.is_lift_status() then
+        agent.movement:perform("release_lift")
     end
     -- 记录地面参考高度（宝宝当前站立处），用于落地判定：骰子必须真正落回地面附近，
     -- 而不是卡在角色头顶就被误判为“已落定”。
@@ -554,7 +520,8 @@ end
 -- 之后每次都带随机横向偏移贴边斜顶，让骰子在空中翻滚，最多顶 baby_bonk_max 次。
 ---@param dt Fixed
 function RpsService:_drive_baby_bonk(dt)
-    local unit = self.agent and self.agent.unit or nil
+    local agent = self.agent
+    local unit = agent and agent.unit or nil
     if not unit then
         return
     end
@@ -563,10 +530,7 @@ function RpsService:_drive_baby_bonk(dt)
         self.pending_jump = self.pending_jump - dt
         if self.pending_jump <= 0.0 then
             self.pending_jump = nil
-            if unit.ai_command_jump then
-                ensure_ai(unit)
-                pcall(function() unit.ai_command_jump() end)
-            end
+            agent.movement:perform("jump")
         end
     end
 
@@ -581,17 +545,13 @@ function RpsService:_drive_baby_bonk(dt)
     self.bonk_count = self.bonk_count + 1
 
     local dir = self:_baby_bonk_dir(unit, self.bonk_count >= 2)
-    if dir and unit.ai_command_start_move then
-        ensure_ai(unit)
-        pcall(function() unit.ai_command_start_move(dir, self.cfg.baby_bonk_move_time) end)
+    if dir then
+        agent.movement:perform("directional_move", { dir = dir, duration = self.cfg.baby_bonk_move_time })
         self.pending_jump = self.cfg.baby_bonk_move_time
     else
         -- 无需走位（骰子在正上方）：直接起跳直顶。
         self.pending_jump = nil
-        if unit.ai_command_jump then
-            ensure_ai(unit)
-            pcall(function() unit.ai_command_jump() end)
-        end
+        agent.movement:perform("jump")
     end
 end
 
@@ -762,12 +722,24 @@ function RpsService:_finish_solo_satisfy()
     local agent = self.agent
     if agent and not agent.destroyed and agent.unit
         and agent.unit.is_lift_status and agent.unit.is_lift_status()
-        and agent.unit.ai_command_lift
     then
-        -- 保险起见仍 ensure_ai：万一 GivingUp 阶段被跳过直接调用到这里，
+        -- 保险起见走 perform（内部先 start_ai）：万一 GivingUp 阶段被跳过直接调用到这里，
         -- action_lock 可能还锁着、AI 还是关的，不然这次松手会静默失效。
-        ensure_ai(agent.unit)
-        pcall(function() agent.unit.ai_command_lift() end)
+        agent.movement:perform("release_lift")
+        -- 引擎坑位：invalidate 现在是「立即对齐」，若同帧就走 _release_agent → Stop，
+        -- stop_ai 会把刚发出的松手指令一并作废，骰子仍挂在手上（旧实现天然隔一拍才停步）。
+        -- 因此松手后挂到 Finishing 隔一拍再收尾。
+        self.state = State.Finishing
+        Timer.once(agent, 0.1, function()
+            if self.agent ~= agent or self.state ~= State.Finishing then
+                return -- 期间已被 destroy/清场
+            end
+            self:_release_agent()
+            self:_clear_session()
+            agent:finish_rps(nil, nil)
+            Log.info("rps solo satisfy (no player response)")
+        end)
+        return
     end
     self:_release_agent()
     self:_clear_session()
@@ -778,25 +750,27 @@ function RpsService:_finish_solo_satisfy()
 end
 
 -- 玩家超时未响应：宝宝抱着骰子随意走动一会儿（模拟"找人玩"的感觉），逛够了再放下骰子收尾。
--- 解开移动锁（同 _begin_settle 的做法）但仍保持 busy + move_mode=Stop，走位由本服务直接
--- 下发 start_move_to_pos_with_threshold（同 MovementSystem 的走法），不经过 Wander
--- （Wander 按既有设计会把速度压成 0，宝宝几乎不动，这里明确要看到它真的在走）。
+-- 解开移动锁（同 _begin_settle 的做法）但仍保持 busy，走位交给参数化 Wander：
+-- anchor 缺省=场地随机点、threshold 缺省=patrol_threshold，正是原闲逛逻辑；
+-- Wander 参数化后 speed_ratio=1.0 即可让宝宝真的走起来（不再一律把速度压成 0）。
 function RpsService:_begin_give_up()
     local agent = self.agent
     -- 配对小步挪动可能已释放过锁，这里直接清标记（不能走 _set_pairing_mobile(false)，
-    -- 否则会重新锁住，与 give_up 需要的自由走动冲突）；随后 give_up 自行接管移动。
+    -- 否则会重新锁住，与 give_up 需要的自由走动冲突）；随后由 Wander 意图接管移动。
     self.pairing_mobile = false
-    self.fidget_anchor = nil
     if agent and not agent.destroyed then
         self:_set_face_target(nil)
         agent.action_lock:release(LOCK)
-        agent.move_mode = Intent.MoveMode.Stop
+        agent.move_mode = Intent.MoveMode.Wander
+        agent.wander_params = {
+            speed_ratio = 1.0,
+            interval = self.cfg.giveup_move_interval,
+        }
         agent:invalidate_systems()
         agent:set_status("没人理我，我自己溜达溜达…")
     end
     self.giveup_elapsed = 0.0
     self.giveup_duration = Rand.fixed(self.cfg.giveup_wander_min, self.cfg.giveup_wander_max)
-    self.giveup_move_timer = 0.0 -- 立刻走第一步，不用等第一个 interval。
     self.state = State.GivingUp
     Log.info("rps giving up, wandering seconds", self.giveup_duration)
 end
@@ -809,34 +783,8 @@ function RpsService:_update_give_up(dt)
         return
     end
     self.giveup_elapsed = self.giveup_elapsed + dt
-    self:_drive_give_up_wander(dt)
     if self.giveup_elapsed >= self.giveup_duration then
         self:_finish_solo_satisfy()
-    end
-end
-
--- 每隔 giveup_move_interval 就近挑一个场地内的随机点走过去，做出闲逛的感觉。
----@param dt Fixed
-function RpsService:_drive_give_up_wander(dt)
-    local agent = self.agent
-    local unit = agent and agent.unit or nil
-    if not unit then
-        return
-    end
-    self.giveup_move_timer = self.giveup_move_timer - dt
-    if self.giveup_move_timer > 0.0 then
-        return
-    end
-    self.giveup_move_timer = self.cfg.giveup_move_interval
-
-    local target = agent.services.arena and agent.services.arena:random_point() or nil
-    local current = unit.get_position and unit.get_position() or nil
-    if target and current and unit.start_move_to_pos_with_threshold then
-        local ground_target = math.Vector3(target.x, current.y, target.z)
-        ensure_ai(unit)
-        pcall(function()
-            unit.start_move_to_pos_with_threshold(ground_target, agent.config.baby.patrol_threshold, 0.5)
-        end)
     end
 end
 
@@ -888,6 +836,10 @@ function RpsService:_release_agent()
     if not (agent and not agent.destroyed) then return end
     self:_set_face_target(nil)
     agent.action_lock:release(LOCK)
+    -- 会话期间本服务可能把意图改成 Wander（配对 fidget / give_up 闲逛）：
+    -- 离场统一交还 Stop 并清掉巡逻参数，随后的行为状态会重写自己的意图。
+    agent.move_mode = Intent.MoveMode.Stop
+    agent.wander_params = nil
     agent:set_busy(false)
     agent:set_lift_enabled(true)
     agent:invalidate_systems()
@@ -911,8 +863,6 @@ function RpsService:_clear_session()
     self.wait_elapsed = 0.0
     self.face_target = nil
     self.pairing_mobile = false
-    self.fidget_anchor = nil
-    self.fidget_timer = 0.0
     self.elapsed = 0.0
     self.flight = {}
     self.floor_y = nil
@@ -923,7 +873,6 @@ function RpsService:_clear_session()
     self.pending_jump = nil
     self.giveup_elapsed = 0.0
     self.giveup_duration = 0.0
-    self.giveup_move_timer = 0.0
 end
 
 function RpsService:_abort()

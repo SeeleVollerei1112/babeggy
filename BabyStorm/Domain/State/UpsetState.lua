@@ -1,6 +1,7 @@
 local Class = require("BaseClass")
 local StateBase = require("BabyStorm.Domain.State.StateBase")
 local Intent = require("BabyStorm.Domain.BabyIntent")
+local Timer = require("BabyStorm.Core.Timer")
 
 -- 错误物品 / 拾取失败的不满表现，短暂后回到 Idle。
 ---@class UpsetState: StateBase
@@ -31,10 +32,9 @@ function UpsetState:enter(context)
     end
     agent.services.score:penalize_wrong(agent.last_role)
 
-    LuaAPI.call_delay_time(1.0, function()
-        if agent:is_in_state(agent.enum.BabyState.Upset) then
-            agent:enter_idle()
-        end
+    -- owner=self：状态 exit 时 StateBase 统一取消，不会有过期回调。
+    Timer.once(self, 1.0, function()
+        agent:enter_idle()
     end)
 end
 
