@@ -7,9 +7,9 @@ local Timer = require("BabyStorm.Core.Timer")
 -- 两层驱动，外部强制层优先：
 --   1) 意图层：行为层只写 agent.anim_base（+ 强制动作的 agent.anim_param），
 --      invalidate() 立即对齐，reconcile(dt) 保留为空转兜底（Phase 6 摘除）。
---   2) 外部强制层：force_play(param, reason) / release(reason)，供 FacilityService
---      过渡期使用（Phase 3 移入 Interaction 子状态）。外部激活期间意图层不播/不停
---      任何动作；release 后重新按意图对齐。同一时刻只有一个外部 force（新的顶掉旧的）。
+--   2) 外部强制层：force_play(param, reason) / release(reason)，供 Interaction 子状态
+--      （设施坐姿/骑行/躺床）使用。外部激活期间意图层不播/不停任何动作；
+--      release 后重新按意图对齐。同一时刻只有一个外部 force（新的顶掉旧的）。
 --
 -- 关键点：把历史上「每秒重发同一个全身动作续命」的 hack 收敛进来——
 --   全身动作（play_body_anim_by_id，如哭闹 23）约 1 秒后会被引擎待机动画顶掉，
@@ -20,7 +20,7 @@ local Timer = require("BabyStorm.Core.Timer")
 --   非强制（Idle/Locomotion/Pickup/CarriedPose）：引擎默认表现，本系统不强制播放，
 --       但负责把上一个 forced 动作显式停掉。
 --   强制（Cry/Ride/Seat）：持续强制播放 agent.anim_param 描述的动作。
---       注：Ride/Seat 当前由 FacilityService 经 force_play 外部层驱动，意图层保留通用支持。
+--       注：Ride/Seat 当前由 Interaction 子状态经 force_play 外部层驱动，意图层保留通用支持。
 
 ---意图层强制动作描述。
 ---@class BabyAnimParam
@@ -101,7 +101,7 @@ function AnimationSystem:_align()
 end
 
 -- ============================================================
--- 外部强制播放层（FacilityService 过渡期使用）
+-- 外部强制播放层（Interaction 子状态使用）
 -- ============================================================
 
 ---外部强制播放一个动作，reason 用于配对 release。

@@ -19,7 +19,7 @@ local Log = require("Util.Log")
 -- 见 .claude/rules/baby-ai-architecture.md。
 --
 -- 行为层向子系统下发的意图字段：move_mode / anim_base / anim_overlay / anim_param。
--- 动作锁统一为 self.action_lock（reason: "behavior" 行为锁 / "ride" 骑乘 / "hold" 放下冻结）。
+-- 动作锁统一为 self.action_lock（reason: "behavior" 行为锁 / "hold" 放下冻结）。
 
 ---@class BabyStateContext
 ---@field item BabyItemRecord|nil
@@ -344,20 +344,6 @@ function BabyAgent:cancel_movement_hold()
 end
 
 -- ============================================================
--- 骑乘移动锁（reason "ride"，供 FacilityService 调用）
--- ============================================================
-
-function BabyAgent:lock_ride_move_state()
-    self.action_lock:acquire("ride")
-    self.movement:invalidate()
-end
-
-function BabyAgent:unlock_ride_move_state()
-    self.action_lock:release("ride")
-    self.movement:invalidate()
-end
-
--- ============================================================
 -- 行为状态机
 -- ============================================================
 
@@ -420,6 +406,18 @@ end
 ---@return boolean
 function BabyAgent:is_in_state(state_id)
     return self.active_state and self.active_state:get_state_id() == state_id and self.active_state:is_active()
+end
+
+---外部事件入口（服务/道具层与行为状态解耦的通道）：转发给当前状态，
+---由它决定后果——事件只报时机，逻辑层决定结果。
+---@param event { type: string }|table
+function BabyAgent:handle_event(event)
+    if self.destroyed or not event then
+        return
+    end
+    if self.active_state and self.active_state:is_active() then
+        self.active_state:handle_event(event)
+    end
 end
 
 ---@return boolean
@@ -665,26 +663,25 @@ end
 -- 设施交互结算
 -- ============================================================
 
+-- 设施收尾（停驱动/动画、恢复碰撞、释放占用、发 end 事件）由 InteractingFacilityState:exit
+-- 统一执行——切到 Satisfied/Upset 时自动触发，这里只负责推进状态。
+
 ---@param facility BabyFacilityRecord
 function BabyAgent:complete_facility_interaction(facility)
     if self.destroyed or not facility then
         return
     end
     self:cancel_need_countdown()
-    self.services.facility:end_interaction(self, facility)
-    self.active_facility = nil
     self:enter_state(Enum.BabyState.Satisfied, { facility = facility }, true)
 end
 
--- 设施交互失败/被打断（如婴儿床 15 秒无人换洗被宝宝弄歪）：结束交互、宝宝离开设施，
+-- 设施交互失败/被打断（如婴儿床 15 秒无人换洗被宝宝弄歪）：宝宝离开设施，
 -- 重新计时当前需求（宝宝仍想被照顾，可再尝试/超时哭闹），随后走一遍不满意表现回 Idle。
 ---@param facility BabyFacilityRecord|nil
 function BabyAgent:fail_facility_interaction(facility)
     if self.destroyed or not facility then
         return
     end
-    self.services.facility:end_interaction(self, facility)
-    self.active_facility = nil
     if self.current_need then
         self:_start_need_countdown(self:get_need_timeout_seconds())
     end

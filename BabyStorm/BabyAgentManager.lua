@@ -4,7 +4,7 @@ local ArenaService = require("BabyStorm.Services.ArenaService")
 local NeedService = require("BabyStorm.Services.NeedService")
 local NeedResolver = require("BabyStorm.Services.NeedResolver")
 local ItemService = require("BabyStorm.Services.ItemService")
-local FacilityService = require("BabyStorm.Services.FacilityService")
+local FacilityRegistry = require("BabyStorm.Services.FacilityRegistry")
 local ScoreService = require("BabyStorm.Services.ScoreService")
 local TaskEventService = require("BabyStorm.Services.TaskEventService")
 local DifficultyService = require("BabyStorm.Services.DifficultyService")
@@ -25,7 +25,7 @@ local Log = require("Util.Log")
 ---@field resolver NeedResolver
 ---@field need NeedService
 ---@field item ItemService
----@field facility FacilityService
+---@field facility FacilityRegistry
 ---@field score ScoreService
 ---@field task TaskEventService
 ---@field difficulty DifficultyService
@@ -94,10 +94,9 @@ function BabyAgentManager:start()
     local item = ItemService.New(self.config, arena)
     item:set_trigger_registry(self.triggers)
     item:set_need_resolver(resolver)
-    local facility = FacilityService.New(self.config)
+    local facility = FacilityRegistry.New(self.config)
     facility:set_need_resolver(resolver)
-    facility:set_trigger_registry(self.triggers)
-    -- 宝宝也是 character，注入“是否宝宝”判定，让滑板碰撞检测能把宝宝从玩家里排除
+    -- 宝宝也是 character，注入“是否宝宝”判定，让滑板上板检测能把宝宝从玩家里排除
     facility:set_baby_unit_filter(function(unit)
         return self:_find_agent_by_unit(unit) ~= nil
     end)
@@ -110,10 +109,9 @@ function BabyAgentManager:start()
     local rps = RpsService.New(self.config, self.triggers)
     local crib = CribService.New(self.config, self.triggers)
     local catapult = CatapultLaunchService.New(self.config, self.triggers)
-    -- crib 与 facility 互相引用：facility 在放下宝宝躺床后回调 crib:begin/end_session；
-    -- crib 通过 facility 拿到所有床记录来绑场景 UI、读歪床状态。
+    -- crib 通过 facility 注册表拿到所有床记录来绑场景 UI、读歪床状态；
+    -- 躺床后的 begin/end_session 由 CribInteraction 子状态调用（不再经 facility 回调）。
     crib:set_facility_service(facility)
-    facility:set_crib_service(crib)
     -- catapult 需要 facility：发射时从 catapult 设施的 active_agent 找到骑在投臂上的宝宝。
     catapult:set_facility_service(facility)
     local view = BabySceneView.New(self.config)

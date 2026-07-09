@@ -456,767 +456,767 @@ Enums = {}
 
 ---@enum Enums.AIBasicCommand AI基础命令类型
 Enums.AIBasicCommand = {
-	INVALID = 0, ---停止
-	JUMP = 1, ---跳跃
-	ROLL = 2, ---滚动
-	RUSH = 3, ---前扑
-	LIFT = 4, ---抓举
-	ABILITY = 5, ---技能&道具
-	MOVE = 6, ---移动
+	INVALID = 0,  ---停止
+	JUMP = 1,  ---跳跃
+	ROLL = 2,  ---滚动
+	RUSH = 3,  ---前扑
+	LIFT = 4,  ---抓举
+	ABILITY = 5,  ---技能&道具
+	MOVE = 6,  ---移动
 }
 
 ---@enum Enums.AbilityLimitation 技能使用限制
 Enums.AbilityLimitation = {
-	ROLL = 1,          ---滚动
-	UN_CONTROL = 2,    ---失控
-	JUMP = 4,          ---跳跃
-	DIE = 8,           ---被击败
-	DISABLE_IN_CAST = 16, ---code_ability_usable_status_disable_in_cast
+	ROLL = 1,  ---滚动
+	UN_CONTROL = 2,  ---失控
+	JUMP = 4,  ---跳跃
+	DIE = 8,  ---被击败
+	DISABLE_IN_CAST = 16,  ---code_ability_usable_status_disable_in_cast
 }
 
 ---@enum Enums.AbilityPointerType 技能指示器类型
 Enums.AbilityPointerType = {
 	EMPTY = 0,  ---无目标
-	CIRCLE = 5, ---圆形施法圈
-	RECTANGLE = 6, ---矩形指示
-	SECTOR = 7, ---扇形指示
-	PARABOLA = 9, ---自定义抛物线
-	SNIPER = 12, ---狙击瞄准
+	CIRCLE = 5,  ---圆形施法圈
+	RECTANGLE = 6,  ---矩形指示
+	SECTOR = 7,  ---扇形指示
+	PARABOLA = 9,  ---自定义抛物线
+	SNIPER = 12,  ---狙击瞄准
 }
 
 ---@enum Enums.AbilityTargetType 技能目标类型
 Enums.AbilityTargetType = {
-	NO_TARGET = 0, ---无目标
-	DIRECTION = 1, ---方向
+	NO_TARGET = 0,  ---无目标
+	DIRECTION = 1,  ---方向
 	POINT = 2,  ---点目标
-	UNIT = 3,   ---指定目标
+	UNIT = 3,  ---指定目标
 }
 
 ---@enum Enums.ArchiveType 存档类型
 Enums.ArchiveType = {
-	Bool = 'Bool',        ---布尔值
-	Fixed = 'Fixed',      ---定点数
-	Int = 'Int',          ---整型
+	Bool = 'Bool',  ---布尔值
+	Fixed = 'Fixed',  ---定点数
+	Int = 'Int',  ---整型
 	SheetID = 'SheetID',  ---表格
-	Str = 'Str',          ---字符串
-	Timestamp = 'Timestamp', ---时间戳
+	Str = 'Str',  ---字符串
+	Timestamp = 'Timestamp',  ---时间戳
 }
 
 ---@enum Enums.AxisType 方向轴类型
 Enums.AxisType = {
-	RIGHT = 0, ---滚动轴(X)
-	UP = 1,   ---偏航轴(Y)
-	FORWARD = 2, ---俯仰轴(Z)
+	RIGHT = 0,  ---滚动轴(X)
+	UP = 1,  ---偏航轴(Y)
+	FORWARD = 2,  ---俯仰轴(Z)
 }
 
 ---@enum Enums.BindType 绑定类型
 Enums.BindType = {
-	BIND_TYPE_DEFAULT = 0,       ---无
-	BIND_TYPE_TRANSLATE = 1,     ---位置
-	BIND_TYPE_ROTATE = 2,        ---旋转
-	BIND_TYPE_TRANSLATE_ROTATE = 3, ---位置，旋转
-	BIND_TYPE_SCALE = 4,         ---缩放
-	BIND_TYPE_TRANSLATE_SCALE = 5, ---位置，缩放
+	BIND_TYPE_DEFAULT = 0,  ---无
+	BIND_TYPE_TRANSLATE = 1,  ---位置
+	BIND_TYPE_ROTATE = 2,  ---旋转
+	BIND_TYPE_TRANSLATE_ROTATE = 3,  ---位置，旋转
+	BIND_TYPE_SCALE = 4,  ---缩放
+	BIND_TYPE_TRANSLATE_SCALE = 5,  ---位置，缩放
 	BIND_TYPE_ROTATE_SCALE = 6,  ---旋转，缩放
-	BIND_TYPE_ALL = 7,           ---位置，旋转，缩放
+	BIND_TYPE_ALL = 7,  ---位置，旋转，缩放
 }
 
 ---@enum Enums.BuffState 状态
 Enums.BuffState = {
-	BUFF_FORBID_JUMP = 1,     ---禁止跳跃
-	BUFF_FORBID_RUSH = 2,     ---禁止前扑
-	BUFF_FORBID_LIFT = 4,     ---禁止抓举
-	BUFF_FORBID_ROLL = 8,     ---禁止滚动
-	BUFF_FORBID_MOVE = 16,    ---禁止移动
-	BUFF_FORBID_CONTROL = 32, ---禁止所有操作
-	BUFF_SILENT = 64,         ---禁止道具&技能
-	BUFF_FORBID_UNCONTROL = 128, ---无视失控
+	BUFF_FORBID_JUMP = 1,  ---禁止跳跃
+	BUFF_FORBID_RUSH = 2,  ---禁止前扑
+	BUFF_FORBID_LIFT = 4,  ---禁止抓举
+	BUFF_FORBID_ROLL = 8,  ---禁止滚动
+	BUFF_FORBID_MOVE = 16,  ---禁止移动
+	BUFF_FORBID_CONTROL = 32,  ---禁止所有操作
+	BUFF_SILENT = 64,  ---禁止道具&技能
+	BUFF_FORBID_UNCONTROL = 128,  ---无视失控
 }
 
 ---@enum Enums.CameraBindMode 相机绑定模式
 Enums.CameraBindMode = {
-	DEFAULT = 0, ---默认
-	BIND = 1, ---固定
-	TRACK = 2, ---追踪
+	DEFAULT = 0,  ---默认
+	BIND = 1,  ---固定
+	TRACK = 2,  ---追踪
 }
 
 ---@enum Enums.CameraDragType 相机拖动类型
 Enums.CameraDragType = {
-	ROTATE = 1, ---旋转视角
-	MOVE = 2, ---平面移动
+	ROTATE = 1,  ---旋转视角
+	MOVE = 2,  ---平面移动
 }
 
 ---@enum Enums.CameraProjectionType 相机投影类型
 Enums.CameraProjectionType = {
-	PERSPECTIVE = 0, ---透视
-	ORTHOGRAPHIC = 1, ---正交
+	PERSPECTIVE = 0,  ---透视
+	ORTHOGRAPHIC = 1,  ---正交
 }
 
 ---@enum Enums.CameraPropertyType 相机属性预设
 Enums.CameraPropertyType = {
-	TRACK_MODE_PITCH = 0, ---追踪-俯仰角
+	TRACK_MODE_PITCH = 0,  ---追踪-俯仰角
 	TRACK_MODE_YAW = 1,  ---追踪-导航角
-	BIND_MODE_OFFSET_X = 2, ---固定-X轴偏移
-	BIND_MODE_OFFSET_Y = 3, ---固定-Y轴偏移
-	BIND_MODE_OFFSET_Z = 4, ---固定-Z轴偏移
-	BIND_MODE_PITCH = 5, ---固定-俯仰角
-	BIND_MODE_YAW = 6,   ---固定-导航角
-	DIST = 7,            ---相机距离
-	FOV = 8,             ---视场角
-	PITCH_MAX = 9,       ---最大俯仰角
-	PITCH_MIN = 10,      ---最小俯仰角
-	OBSERVER_HEIGHT = 11, ---相机高度
-	HORIZONTAL_OFFSET = 12, ---水平偏移
-	PITCH = 15,          ---俯仰角
-	YAW = 16,            ---偏航角
-	OFFSET_X = 17,       ---X轴偏移
-	OFFSET_Y = 18,       ---Y轴偏移
-	OFFSET_Z = 19,       ---Z轴偏移
-	ROLL = 20,           ---滚动角
-	ORTHO_VIEW_HEIGHT = 21, ---正交相机视域
-	PLAYER_VISIBILITY = 22, ---隐藏本地角色
+	BIND_MODE_OFFSET_X = 2,  ---固定-X轴偏移
+	BIND_MODE_OFFSET_Y = 3,  ---固定-Y轴偏移
+	BIND_MODE_OFFSET_Z = 4,  ---固定-Z轴偏移
+	BIND_MODE_PITCH = 5,  ---固定-俯仰角
+	BIND_MODE_YAW = 6,  ---固定-导航角
+	DIST = 7,  ---相机距离
+	FOV = 8,  ---视场角
+	PITCH_MAX = 9,  ---最大俯仰角
+	PITCH_MIN = 10,  ---最小俯仰角
+	OBSERVER_HEIGHT = 11,  ---相机高度
+	HORIZONTAL_OFFSET = 12,  ---水平偏移
+	PITCH = 15,  ---俯仰角
+	YAW = 16,  ---偏航角
+	OFFSET_X = 17,  ---X轴偏移
+	OFFSET_Y = 18,  ---Y轴偏移
+	OFFSET_Z = 19,  ---Z轴偏移
+	ROLL = 20,  ---滚动角
+	ORTHO_VIEW_HEIGHT = 21,  ---正交相机视域
+	PLAYER_VISIBILITY = 22,  ---隐藏本地角色
 	CAMERA_EASING = 23,  ---关闭相机缓动
-	LOCKON_MOVEMENT = 24, ---锁定面向到相机
-	DRAG_SPEED = 25,     ---平面拖动速度
-	SENSITIVE_X = 27,    ---旋转速度X
-	SENSITIVE_Y = 28,    ---旋转速度Y
+	LOCKON_MOVEMENT = 24,  ---锁定面向到相机
+	DRAG_SPEED = 25,  ---平面拖动速度
+	SENSITIVE_X = 27,  ---旋转速度X
+	SENSITIVE_Y = 28,  ---旋转速度Y
 }
 
 ---@enum Enums.CameraShakeCurve 屏幕震动曲线
 Enums.CameraShakeCurve = {
-	SINE = 9998, ---正弦
-	NOISE = 9999, ---随机噪声
+	SINE = 9998,  ---正弦
+	NOISE = 9999,  ---随机噪声
 }
 
 ---@enum Enums.CameraShakeType 屏幕震动类型
 Enums.CameraShakeType = {
-	FRONT_AND_BACK = 1, ---前后
-	UP_AND_DOWN = 2, ---上下
-	ROTATE = 4,      ---旋转
+	FRONT_AND_BACK = 1,  ---前后
+	UP_AND_DOWN = 2,  ---上下
+	ROTATE = 4,  ---旋转
 }
 
 ---@enum Enums.CampRelationType 阵营关系类型
 Enums.CampRelationType = {
-	ENEMY = 1, ---敌对
-	FRIEND = 2, ---同盟
+	ENEMY = 1,  ---敌对
+	FRIEND = 2,  ---同盟
 }
 
 ---@enum Enums.CollisionLimitType 碰撞限制枚举
 Enums.CollisionLimitType = {
-	SELF_COUNT = 1,      ---自身触发次数
-	SELF_INTERVAL = 2,   ---自身触发间隔
-	SAME_UNIT_COUNT = 3, ---同目标触发次数
-	SAME_UNIT_INTERVAL = 4, ---同目标触发间隔
+	SELF_COUNT = 1,  ---自身触发次数
+	SELF_INTERVAL = 2,  ---自身触发间隔
+	SAME_UNIT_COUNT = 3,  ---同目标触发次数
+	SAME_UNIT_INTERVAL = 4,  ---同目标触发间隔
 }
 
 ---@enum Enums.ColorPaintAreaType 染色区域
 Enums.ColorPaintAreaType = {
-	AREA_1 = 1, ---染色区域1
-	AREA_2 = 2, ---染色区域2
-	AREA_3 = 3, ---染色区域3
-	AREA_4 = 4, ---染色区域4
+	AREA_1 = 1,  ---染色区域1
+	AREA_2 = 2,  ---染色区域2
+	AREA_3 = 3,  ---染色区域3
+	AREA_4 = 4,  ---染色区域4
 }
 
 ---@enum Enums.CommonUnitType 常用单位类型
 Enums.CommonUnitType = {
-	OBSTACLE = 3,          ---物理组件
-	TRIGGER_SPACE = 4,     ---逻辑体
-	CUSTOM_TRIGGER_SPACE = 5, ---触发区域
-	LIFE_ENTITY = 6,       ---角色/生物
+	OBSTACLE = 3,  ---物理组件
+	TRIGGER_SPACE = 4,  ---逻辑体
+	CUSTOM_TRIGGER_SPACE = 5,  ---触发区域
+	LIFE_ENTITY = 6,  ---角色/生物
 }
 
 ---@enum Enums.CoordinateSystemType 坐标系类型
 Enums.CoordinateSystemType = {
-	LOCAL = 1, ---局部坐标
-	WORLD = 2, ---世界坐标
+	LOCAL = 1,  ---局部坐标
+	WORLD = 2,  ---世界坐标
 }
 
 ---@enum Enums.DirectionType 方向枚举
 Enums.DirectionType = {
-	FORWARD = 3, ---前
-	BACK = 4, ---后
-	UP = 5,   ---上
-	DOWN = 6, ---下
-	LEFT = 7, ---左
-	RIGHT = 8, ---右
+	FORWARD = 3,  ---前
+	BACK = 4,  ---后
+	UP = 5,  ---上
+	DOWN = 6,  ---下
+	LEFT = 7,  ---左
+	RIGHT = 8,  ---右
 }
 
 ---@enum Enums.DropType 掉落类型
 Enums.DropType = {
-	DIE = 0,    ---击败
-	RESET_POS = 1, ---复位
+	DIE = 0,  ---击败
+	RESET_POS = 1,  ---复位
 }
 
 ---@enum Enums.EquipmentSlotType 物品槽位类型
 Enums.EquipmentSlotType = {
-	EQUIPPED = 1, ---装配区
-	BACKPACK = 2, ---储物区
+	EQUIPPED = 1,  ---装配区
+	BACKPACK = 2,  ---储物区
 }
 
 ---@enum Enums.EquipmentType 物品类型
 Enums.EquipmentType = {
-	BASIC = 0, ---基础
-	WEAPON = 1, ---武器物品
+	BASIC = 0,  ---基础
+	WEAPON = 1,  ---武器物品
 }
 
 ---@enum Enums.FixedRoundType 实数取整方式
 Enums.FixedRoundType = {
-	ROUND_DOWN = 0, ---向下取整
-	ROUND_UP = 1,   ---向上取整
-	ROUND_HALF_UP = 2, ---四舍五入
+	ROUND_DOWN = 0,  ---向下取整
+	ROUND_UP = 1,  ---向上取整
+	ROUND_HALF_UP = 2,  ---四舍五入
 }
 
 ---@enum Enums.FriendshipType 好友关系
 Enums.FriendshipType = {
-	NONE = -1,     ---非好友
-	NORMAL = 0,    ---普通好友
-	CLOSE_FRIEND = 1, ---挚友
-	LOVER = 2,     ---宝子
-	BFF = 3,       ---闺蜜
-	BUDDY = 4,     ---死党
-	PARTNER = 5,   ---最佳拍档
+	NONE = -1,  ---非好友
+	NORMAL = 0,  ---普通好友
+	CLOSE_FRIEND = 1,  ---挚友
+	LOVER = 2,  ---宝子
+	BFF = 3,  ---闺蜜
+	BUDDY = 4,  ---死党
+	PARTNER = 5,  ---最佳拍档
 }
 
 ---@enum Enums.GameResult 游戏结局
 Enums.GameResult = {
-	LOSE = 0, ---游戏失败
-	WIN = 1, ---游戏胜利
-	GAMING = 2, ---游戏中
+	LOSE = 0,  ---游戏失败
+	WIN = 1,  ---游戏胜利
+	GAMING = 2,  ---游戏中
 }
 
 ---@enum Enums.HpBarDisplayMode 血条显示模式
 Enums.HpBarDisplayMode = {
-	NONE = 0,    ---不显示
-	PERSISTENT = 1, ---常驻显示
-	NOT_FULL = 2, ---血量不满时显示
+	NONE = 0,  ---不显示
+	PERSISTENT = 1,  ---常驻显示
+	NOT_FULL = 2,  ---血量不满时显示
 }
 
 ---@enum Enums.InteractBtnType 交互按钮类型
 Enums.InteractBtnType = {
-	OFFICIAL = 1,        ---官方互动
-	STORY = 101,         ---剧情对话
-	SHOP = 201,          ---商店
-	UNIT_START = 301,    ---家具互动-开始
-	UNIT_STOP = 302,     ---家具互动-结束
-	UNIT_DOING = 304,    ---家具互动-进行中
-	MOTOR_START = 401,   ---运动器-激活
-	MOTOR_PAUSE = 402,   ---运动器-暂停
-	MOTOR_BACK = 404,    ---运动器-返程
-	EXPRESSION_START = 501, ---表现器-激活
-	EXPRESSION_STOP = 502, ---表现器-关闭
-	CUSTOM = 601,        ---自定义
-	UGC_QUEST = 701,     ---任务
-	PASSWORD = 801,      ---密码锁
+	OFFICIAL = 1,  ---官方互动
+	STORY = 101,  ---剧情对话
+	SHOP = 201,  ---商店
+	UNIT_START = 301,  ---家具互动-开始
+	UNIT_STOP = 302,  ---家具互动-结束
+	UNIT_DOING = 304,  ---家具互动-进行中
+	MOTOR_START = 401,  ---运动器-激活
+	MOTOR_PAUSE = 402,  ---运动器-暂停
+	MOTOR_BACK = 404,  ---运动器-返程
+	EXPRESSION_START = 501,  ---表现器-激活
+	EXPRESSION_STOP = 502,  ---表现器-关闭
+	CUSTOM = 601,  ---自定义
+	UGC_QUEST = 701,  ---任务
+	PASSWORD = 801,  ---密码锁
 }
 
 ---@enum Enums.JointAssistantKey 关节预设编号
 Enums.JointAssistantKey = {
-	SPRING = 3400000,   ---SPRING
-	ROPE = 3400001,     ---ROPE
-	SLIDER = 3400002,   ---SLIDER
-	HINGE = 3400003,    ---HINGE
-	BALL_SOCKET = 3400004, ---BALL_SOCKET
-	D6 = 3400005,       ---D6
-	FIXED = 3400006,    ---FIXED
+	SPRING = 3400000,  ---SPRING
+	ROPE = 3400001,  ---ROPE
+	SLIDER = 3400002,  ---SLIDER
+	HINGE = 3400003,  ---HINGE
+	BALL_SOCKET = 3400004,  ---BALL_SOCKET
+	D6 = 3400005,  ---D6
+	FIXED = 3400006,  ---FIXED
 }
 
 ---@enum Enums.JointAssistantProperty 关节属性
 Enums.JointAssistantProperty = {
-	NO_COLLISION_IN_JOINT = 1,       ---连接物体之间不碰撞
-	NO_COLLISION_IN_MECHANISM = 2,   ---全机械内无碰撞
-	ANCHOR1 = 3,                     ---本体锚点
-	ANCHOR2 = 4,                     ---目标锚点
-	SPRING_STIFFNESS = 5,            ---弹簧刚度
-	SPRING_DAMPING = 6,              ---弹簧阻尼
-	SPRING_ACCELERATION = 7,         ---加速度弹簧
-	SPRING_RESET_LENGTH_EDITABLE = 8, ---自由长度可编辑
-	SPRING_RESET_LENGTH = 9,         ---自由长度
-	SPRING_FORCE_LIMIT = 10,         ---弹簧最大力限制
-	SPRING_MIN_LENGTH = 11,          ---弹簧最大长度
-	SPRING_MAX_LENGTH = 12,          ---弹簧最小长度
-	SPRING_THICKNESS = 13,           ---弹簧粗细
-	ROPE_LENGTH = 14,                ---绳子长度
-	ROPE_STRETCHABLE = 15,           ---绳子可拉伸
-	ROPE_STRETCH_STIFFNESS = 16,     ---绳子拉伸强度
-	ROPE_THICKNESS = 17,             ---绳子粗细
-	SLIDER_AXIS = 18,                ---滑动轴方向
-	SLIDER_LIMITED = 19,             ---滑动距离限制
-	SLIDER_MIN_VALUE = 20,           ---滑动距离最小值
-	SLIDER_MAX_VALUE = 21,           ---滑动距离最大值
-	SLIDER_POSITION_DRIVE_ENABLED = 22, ---滑动关节位置驱动
-	SLIDER_DRIVE_POSITION = 23,      ---滑动关节驱动目标位置
-	SLIDER_DRIVE_STIFFNESS = 24,     ---滑动关节位置驱动强度
-	SLIDER_VELOCITY_DRIVE_ENABLED = 25, ---滑动关节速度驱动
-	SLIDER_DRIVE_VELOCITY = 26,      ---滑动关节驱动速度
-	SLIDER_DRIVE_DAMPING = 27,       ---滑动关节速度驱动强度
-	HINGE_AXIS = 28,                 ---合页转轴方向
-	HINGE_LIMITED = 29,              ---合页旋转限制
-	HINGE_MIN_VALUE = 30,            ---合页限制最小值
-	HINGE_MAX_VALUE = 31,            ---合页限制最大值
-	HINGE_POSITION_DRIVE_ENABLED = 32, ---合页位置驱动
-	HINGE_DRIVE_POSITION = 33,       ---合页目标位置(角度)
-	HINGE_DRIVE_STIFFNESS = 34,      ---合页位置驱动强度
-	HINGE_VELOCITY_DRIVE_ENABLED = 35, ---合页速度驱动
-	HINGE_DRIVE_VELOCITY = 36,       ---合页目标速度(角速度)
-	HINGE_DRIVE_DAMPING = 37,        ---合页速度驱动强度
-	BS_X_AXIS = 38,                  ---扭转轴朝向
-	BS_LIMITED = 39,                 ---关节角度限制
-	BS_MAX_SWING_ANGLE = 40,         ---最大摆动角度
-	BS_TWIST_LIMITED = 41,           ---扭转角度限制
-	BS_MIN_TWIST_ANGLE = 42,         ---扭转限制最小角度
-	BS_MAX_TWIST_ANGLE = 43,         ---扭转限制最大角度
-	BS_REBALANCE_STIFFNESS = 44,     ---回正强度
+	NO_COLLISION_IN_JOINT = 1,  ---连接物体之间不碰撞
+	NO_COLLISION_IN_MECHANISM = 2,  ---全机械内无碰撞
+	ANCHOR1 = 3,  ---本体锚点
+	ANCHOR2 = 4,  ---目标锚点
+	SPRING_STIFFNESS = 5,  ---弹簧刚度
+	SPRING_DAMPING = 6,  ---弹簧阻尼
+	SPRING_ACCELERATION = 7,  ---加速度弹簧
+	SPRING_RESET_LENGTH_EDITABLE = 8,  ---自由长度可编辑
+	SPRING_RESET_LENGTH = 9,  ---自由长度
+	SPRING_FORCE_LIMIT = 10,  ---弹簧最大力限制
+	SPRING_MIN_LENGTH = 11,  ---弹簧最大长度
+	SPRING_MAX_LENGTH = 12,  ---弹簧最小长度
+	SPRING_THICKNESS = 13,  ---弹簧粗细
+	ROPE_LENGTH = 14,  ---绳子长度
+	ROPE_STRETCHABLE = 15,  ---绳子可拉伸
+	ROPE_STRETCH_STIFFNESS = 16,  ---绳子拉伸强度
+	ROPE_THICKNESS = 17,  ---绳子粗细
+	SLIDER_AXIS = 18,  ---滑动轴方向
+	SLIDER_LIMITED = 19,  ---滑动距离限制
+	SLIDER_MIN_VALUE = 20,  ---滑动距离最小值
+	SLIDER_MAX_VALUE = 21,  ---滑动距离最大值
+	SLIDER_POSITION_DRIVE_ENABLED = 22,  ---滑动关节位置驱动
+	SLIDER_DRIVE_POSITION = 23,  ---滑动关节驱动目标位置
+	SLIDER_DRIVE_STIFFNESS = 24,  ---滑动关节位置驱动强度
+	SLIDER_VELOCITY_DRIVE_ENABLED = 25,  ---滑动关节速度驱动
+	SLIDER_DRIVE_VELOCITY = 26,  ---滑动关节驱动速度
+	SLIDER_DRIVE_DAMPING = 27,  ---滑动关节速度驱动强度
+	HINGE_AXIS = 28,  ---合页转轴方向
+	HINGE_LIMITED = 29,  ---合页旋转限制
+	HINGE_MIN_VALUE = 30,  ---合页限制最小值
+	HINGE_MAX_VALUE = 31,  ---合页限制最大值
+	HINGE_POSITION_DRIVE_ENABLED = 32,  ---合页位置驱动
+	HINGE_DRIVE_POSITION = 33,  ---合页目标位置(角度)
+	HINGE_DRIVE_STIFFNESS = 34,  ---合页位置驱动强度
+	HINGE_VELOCITY_DRIVE_ENABLED = 35,  ---合页速度驱动
+	HINGE_DRIVE_VELOCITY = 36,  ---合页目标速度(角速度)
+	HINGE_DRIVE_DAMPING = 37,  ---合页速度驱动强度
+	BS_X_AXIS = 38,  ---扭转轴朝向
+	BS_LIMITED = 39,  ---关节角度限制
+	BS_MAX_SWING_ANGLE = 40,  ---最大摆动角度
+	BS_TWIST_LIMITED = 41,  ---扭转角度限制
+	BS_MIN_TWIST_ANGLE = 42,  ---扭转限制最小角度
+	BS_MAX_TWIST_ANGLE = 43,  ---扭转限制最大角度
+	BS_REBALANCE_STIFFNESS = 44,  ---回正强度
 }
 
 ---@enum Enums.ModelSocket 部位
 Enums.ModelSocket = {
-	socket_abdomen = 'socket_abdomen',          ---腹部
-	socket_belly = 'socket_belly',              ---鱼腹
-	socket_body = 'socket_body',                ---身体
-	socket_calf_l = 'socket_calf_l',            ---左小腿
-	socket_calf_r = 'socket_calf_r',            ---右小腿
-	socket_chest = 'socket_chest',              ---胸部
-	socket_claw_l = 'socket_claw_l',            ---左钳
-	socket_claw_r = 'socket_claw_r',            ---右钳
-	socket_eye_l = 'socket_eye_l',              ---左眼
-	socket_eye_r = 'socket_eye_r',              ---右眼
-	socket_fin_back = 'socket_fin_back',        ---背后鳍
-	socket_fin_dorsal = 'socket_fin_dorsal',    ---背鳍
-	socket_fin_l = 'socket_fin_l',              ---左鳍
-	socket_fin_lb = 'socket_fin_lb',            ---左后鳍
-	socket_fin_r = 'socket_fin_r',              ---右鳍
-	socket_fin_rb = 'socket_fin_rb',            ---右后鳍
-	socket_fin_tail = 'socket_fin_tail',        ---尾鳍
+	socket_abdomen = 'socket_abdomen',  ---腹部
+	socket_belly = 'socket_belly',  ---鱼腹
+	socket_body = 'socket_body',  ---身体
+	socket_calf_l = 'socket_calf_l',  ---左小腿
+	socket_calf_r = 'socket_calf_r',  ---右小腿
+	socket_chest = 'socket_chest',  ---胸部
+	socket_claw_l = 'socket_claw_l',  ---左钳
+	socket_claw_r = 'socket_claw_r',  ---右钳
+	socket_eye_l = 'socket_eye_l',  ---左眼
+	socket_eye_r = 'socket_eye_r',  ---右眼
+	socket_fin_back = 'socket_fin_back',  ---背后鳍
+	socket_fin_dorsal = 'socket_fin_dorsal',  ---背鳍
+	socket_fin_l = 'socket_fin_l',  ---左鳍
+	socket_fin_lb = 'socket_fin_lb',  ---左后鳍
+	socket_fin_r = 'socket_fin_r',  ---右鳍
+	socket_fin_rb = 'socket_fin_rb',  ---右后鳍
+	socket_fin_tail = 'socket_fin_tail',  ---尾鳍
 	socket_fin_ventral = 'socket_fin_ventral',  ---腹鳍
-	socket_fin_ventral_l = 'socket_fin_ventral_l', ---左腹鳍
-	socket_fin_ventral_r = 'socket_fin_ventral_r', ---右腹鳍
-	socket_foot_l = 'socket_foot_l',            ---左脚
-	socket_foot_lb = 'socket_foot_lb',          ---左后脚
-	socket_foot_lf = 'socket_foot_lf',          ---左前脚
-	socket_foot_lm = 'socket_foot_lm',          ---左中脚
-	socket_foot_r = 'socket_foot_r',            ---右脚
-	socket_foot_rb = 'socket_foot_rb',          ---右后脚
-	socket_foot_rf = 'socket_foot_rf',          ---右前脚
-	socket_foot_rm = 'socket_foot_rm',          ---右中脚
-	socket_forearm_l = 'socket_forearm_l',      ---左臂
-	socket_forearm_r = 'socket_forearm_r',      ---右臂
-	socket_hand_l = 'socket_hand_l',            ---左手
-	socket_hand_r = 'socket_hand_r',            ---右手
-	socket_head = 'socket_head',                ---头部
-	socket_lowerarm_l = 'socket_lowerarm_l',    ---左小臂
-	socket_lowerarm_r = 'socket_lowerarm_r',    ---右小臂
-	socket_lowerlimb_lb = 'socket_lowerlimb_lb', ---左后下肢
-	socket_lowerlimb_lf = 'socket_lowerlimb_lf', ---左前下肢
-	socket_lowerlimb_rb = 'socket_lowerlimb_rb', ---右后下肢
-	socket_lowerlimb_rf = 'socket_lowerlimb_rf', ---右前下肢
-	socket_mouth = 'socket_mouth',              ---鱼嘴
-	socket_origin = 'socket_origin',            ---底面中心点
-	socket_tail = 'socket_tail',                ---尾巴
-	socket_tail_end = 'socket_tail_end',        ---尾巴末端
-	socket_thigh_l = 'socket_thigh_l',          ---左大腿
-	socket_thigh_r = 'socket_thigh_r',          ---右大腿
-	socket_torso_b = 'socket_torso_b',          ---躯干后部
-	socket_torso_f = 'socket_torso_f',          ---躯干前部
-	socket_upperarm_l = 'socket_upperarm_l',    ---左大臂
-	socket_upperarm_r = 'socket_upperarm_r',    ---右大臂
-	socket_upperlimb_lb = 'socket_upperlimb_lb', ---左后上肢
-	socket_upperlimb_lf = 'socket_upperlimb_lf', ---左前上肢
-	socket_upperlimb_rb = 'socket_upperlimb_rb', ---右后上肢
-	socket_upperlimb_rf = 'socket_upperlimb_rf', ---右前上肢
-	socket_weapon_l = 'socket_weapon_l',        ---左手武器
-	socket_weapon_r = 'socket_weapon_r',        ---右手武器
+	socket_fin_ventral_l = 'socket_fin_ventral_l',  ---左腹鳍
+	socket_fin_ventral_r = 'socket_fin_ventral_r',  ---右腹鳍
+	socket_foot_l = 'socket_foot_l',  ---左脚
+	socket_foot_lb = 'socket_foot_lb',  ---左后脚
+	socket_foot_lf = 'socket_foot_lf',  ---左前脚
+	socket_foot_lm = 'socket_foot_lm',  ---左中脚
+	socket_foot_r = 'socket_foot_r',  ---右脚
+	socket_foot_rb = 'socket_foot_rb',  ---右后脚
+	socket_foot_rf = 'socket_foot_rf',  ---右前脚
+	socket_foot_rm = 'socket_foot_rm',  ---右中脚
+	socket_forearm_l = 'socket_forearm_l',  ---左臂
+	socket_forearm_r = 'socket_forearm_r',  ---右臂
+	socket_hand_l = 'socket_hand_l',  ---左手
+	socket_hand_r = 'socket_hand_r',  ---右手
+	socket_head = 'socket_head',  ---头部
+	socket_lowerarm_l = 'socket_lowerarm_l',  ---左小臂
+	socket_lowerarm_r = 'socket_lowerarm_r',  ---右小臂
+	socket_lowerlimb_lb = 'socket_lowerlimb_lb',  ---左后下肢
+	socket_lowerlimb_lf = 'socket_lowerlimb_lf',  ---左前下肢
+	socket_lowerlimb_rb = 'socket_lowerlimb_rb',  ---右后下肢
+	socket_lowerlimb_rf = 'socket_lowerlimb_rf',  ---右前下肢
+	socket_mouth = 'socket_mouth',  ---鱼嘴
+	socket_origin = 'socket_origin',  ---底面中心点
+	socket_tail = 'socket_tail',  ---尾巴
+	socket_tail_end = 'socket_tail_end',  ---尾巴末端
+	socket_thigh_l = 'socket_thigh_l',  ---左大腿
+	socket_thigh_r = 'socket_thigh_r',  ---右大腿
+	socket_torso_b = 'socket_torso_b',  ---躯干后部
+	socket_torso_f = 'socket_torso_f',  ---躯干前部
+	socket_upperarm_l = 'socket_upperarm_l',  ---左大臂
+	socket_upperarm_r = 'socket_upperarm_r',  ---右大臂
+	socket_upperlimb_lb = 'socket_upperlimb_lb',  ---左后上肢
+	socket_upperlimb_lf = 'socket_upperlimb_lf',  ---左前上肢
+	socket_upperlimb_rb = 'socket_upperlimb_rb',  ---右后上肢
+	socket_upperlimb_rf = 'socket_upperlimb_rf',  ---右前上肢
+	socket_weapon_l = 'socket_weapon_l',  ---左手武器
+	socket_weapon_r = 'socket_weapon_r',  ---右手武器
 }
 
 ---@enum Enums.MoveMode AI移动模式
 Enums.MoveMode = {
-	DIRECT = 0,        ---无视障碍
-	PATHFIND = 1,      ---规避障碍
-	DIRECT_AUTO_JUMP = 4, ---根据路点高度差跳跃
+	DIRECT = 0,  ---无视障碍
+	PATHFIND = 1,  ---规避障碍
+	DIRECT_AUTO_JUMP = 4,  ---根据路点高度差跳跃
 }
 
 ---@enum Enums.NavMode AI寻路模式
 Enums.NavMode = {
-	DIRECT = 0,        ---无视障碍
-	PATHFIND = 1,      ---规避障碍
-	PATHFIND_NO_JUMP = 2, ---规避障碍（非跳跃）
-	PATHFIND_JUMP = 3, ---规避障碍（跳跃）
-	DIRECT_AUTO_JUMP = 4, ---根据路点高度差跳跃
+	DIRECT = 0,  ---无视障碍
+	PATHFIND = 1,  ---规避障碍
+	PATHFIND_NO_JUMP = 2,  ---规避障碍（非跳跃）
+	PATHFIND_JUMP = 3,  ---规避障碍（跳跃）
+	DIRECT_AUTO_JUMP = 4,  ---根据路点高度差跳跃
 }
 
 ---@enum Enums.OrientationType 方位枚举
 Enums.OrientationType = {
-	EAST = 1, ---东
-	WEST = 2, ---西
-	SOUTH = 3, ---南
-	NORTH = 4, ---北
-	UP = 5, ---上
-	DOWN = 6, ---下
+	EAST = 1,  ---东
+	WEST = 2,  ---西
+	SOUTH = 3,  ---南
+	NORTH = 4,  ---北
+	UP = 5,  ---上
+	DOWN = 6,  ---下
 }
 
 ---@enum Enums.PatrolType AI巡逻类型
 Enums.PatrolType = {
-	ONE_WAY = 0,     ---一次性
-	LOOP = 1,        ---巡逻
-	BACK_AND_FORTH = 2, ---往返
-	NEAREST = 3,     ---紧随路径
+	ONE_WAY = 0,  ---一次性
+	LOOP = 1,  ---巡逻
+	BACK_AND_FORTH = 2,  ---往返
+	NEAREST = 3,  ---紧随路径
 }
 
 ---@enum Enums.PlaneType 拖动平面
 Enums.PlaneType = {
-	XZ_PLANE = 1, ---XZ平面
-	XY_PLANE = 2, ---XY平面
-	YZ_PLANE = 3, ---YZ平面
+	XZ_PLANE = 1,  ---XZ平面
+	XY_PLANE = 2,  ---XY平面
+	YZ_PLANE = 3,  ---YZ平面
 }
 
 ---@enum Enums.QuestBarState 任务栏状态
 Enums.QuestBarState = {
-	COLLAPSE = 0, ---收起
-	EXPAND = 1, ---展开
+	COLLAPSE = 0,  ---收起
+	EXPAND = 1,  ---展开
 }
 
 ---@enum Enums.QuestStatus 任务状态
 Enums.QuestStatus = {
-	PENDING = 0, ---待解锁
-	ACCEPTABLE = 1, ---待接取
-	RUNNING = 2, ---进行中
-	SUBMITTING = 3, ---待提交
-	COMPLETED = 4, ---成功
-	INVALID = 5, ---失败
+	PENDING = 0,  ---待解锁
+	ACCEPTABLE = 1,  ---待接取
+	RUNNING = 2,  ---进行中
+	SUBMITTING = 3,  ---待提交
+	COMPLETED = 4,  ---成功
+	INVALID = 5,  ---失败
 }
 
 ---@enum Enums.RigidBodyType 物理类型
 Enums.RigidBodyType = {
-	STATIC = 0, ---静态物体
-	KINEMATIC = 1, ---恒定运动
-	DYNAMIC = 2, ---受外力
+	STATIC = 0,  ---静态物体
+	KINEMATIC = 1,  ---恒定运动
+	DYNAMIC = 2,  ---受外力
 }
 
 ---@enum Enums.SearchEnemyPriority 搜敌优先级模式
 Enums.SearchEnemyPriority = {
-	DEFAULT = 0,      ---无
-	NEAREST = 1,      ---距离最近
-	FARTHEST = 2,     ---距离最远
-	HIGHEST_HP = 3,   ---健康值最高
-	LOWEST_HP = 4,    ---健康值最低
-	CHARACTER_FIRST = 5, ---角色优先
-	CREATURE_FIRST = 6, ---生物优先
+	DEFAULT = 0,  ---无
+	NEAREST = 1,  ---距离最近
+	FARTHEST = 2,  ---距离最远
+	HIGHEST_HP = 3,  ---健康值最高
+	LOWEST_HP = 4,  ---健康值最低
+	CHARACTER_FIRST = 5,  ---角色优先
+	CREATURE_FIRST = 6,  ---生物优先
 }
 
 ---@enum Enums.SkyBoxGradualType 天空盒渐变类型
 Enums.SkyBoxGradualType = {
-	NORMAL = 0,      ---普通
-	GRADUAL_CHANGE = 1, ---渐变
-	FAULT_STYLE = 2, ---电子故障
+	NORMAL = 0,  ---普通
+	GRADUAL_CHANGE = 1,  ---渐变
+	FAULT_STYLE = 2,  ---电子故障
 	BURN_STYLE = 3,  ---燃烧风格
 }
 
 ---@enum Enums.TriggerSpaceEventType 触发区域类型
 Enums.TriggerSpaceEventType = {
-	ENTER = 1, ---进入
-	LEAVE = 4, ---离开
+	ENTER = 1,  ---进入
+	LEAVE = 4,  ---离开
 }
 
 ---@enum Enums.UnitType 单位类型
 Enums.UnitType = {
-	CREATURE = 4,        ---生物
-	CUSTOMTRIGGERSPACE = 8, ---触发区域
-	CHARACTER = 128,     ---角色
-	OBSTACLE = 256,      ---组件
+	CREATURE = 4,  ---生物
+	CUSTOMTRIGGERSPACE = 8,  ---触发区域
+	CHARACTER = 128,  ---角色
+	OBSTACLE = 256,  ---组件
 	TRIGGERSPACE = 512,  ---逻辑体
-	DECORATION = 1024,   ---装饰物
-	EQUIPMENT = 32768,   ---物品
+	DECORATION = 1024,  ---装饰物
+	EQUIPMENT = 32768,  ---物品
 }
 
 ---@enum Enums.ValueType 值类型
 Enums.ValueType = {
-	AIBasicCommand = 'AIBasicCommand',                      ---AI基础命令类型
-	Ability = 'Ability',                                    ---技能
-	AbilityAnchorID = 'AbilityAnchorID',                    ---技能锚点ID
-	AbilityIndex = 'AbilityIndex',                          ---技能槽位(内部)
-	AbilityKey = 'AbilityKey',                              ---技能编号
-	AbilityLimitation = 'AbilityLimitation',                ---技能使用限制
-	AbilityPointerType = 'AbilityPointerType',              ---技能指示器类型
-	AbilitySlot = 'AbilitySlot',                            ---技能槽位
-	AbilityStyleKey = 'AbilityStyleKey',                    ---技能控件样式编号
-	Achievement = 'Achievement',                            ---自定义成就
-	Actor = 'Actor',                                        ---Actor
-	AnimKey = 'AnimKey',                                    ---动画编号
-	AnimationStyleKey = 'AnimationStyleKey',                ---动效样式编号
-	Archive = 'Archive',                                    ---自定义存档
-	ArchiveType = 'ArchiveType',                            ---存档类型
-	BagSlotStyleKey = 'BagSlotStyleKey',                    ---物品格样式编号
-	BattleShopKey = 'BattleShopKey',                        ---商店
-	BindType = 'BindType',                                  ---绑定类型
-	Bool = 'Bool',                                          ---布尔值
-	BtnStyleKey = 'BtnStyleKey',                            ---按钮样式编号
-	BuffState = 'BuffState',                                ---状态
-	CameraBindMode = 'CameraBindMode',                      ---相机绑定模式
-	CameraDragType = 'CameraDragType',                      ---相机拖动类型
-	CameraProjectionType = 'CameraProjectionType',          ---相机投影类型
-	CameraPropertyType = 'CameraPropertyType',              ---相机属性预设
-	CameraShakeCurve = 'CameraShakeCurve',                  ---屏幕震动曲线
-	CameraShakeType = 'CameraShakeType',                    ---屏幕震动类型
-	Camp = 'Camp',                                          ---阵营
-	CampID = 'CampID',                                      ---阵营ID
-	CampRelationType = 'CampRelationType',                  ---阵营关系类型
-	Character = 'Character',                                ---角色
-	CharacterID = 'CharacterID',                            ---角色ID
-	CharacterKey = 'CharacterKey',                          ---角色编号
-	ChessType = 'ChessType',                                ---麻将/扑克花色
-	CollisionLimitType = 'CollisionLimitType',              ---碰撞限制枚举
-	Color = 'Color',                                        ---颜色
-	Creature = 'Creature',                                  ---生物
-	CreatureID = 'CreatureID',                              ---生物ID
-	CreatureKey = 'CreatureKey',                            ---生物编号
-	CustomTriggerSpace = 'CustomTriggerSpace',              ---触发区域
-	CustomTriggerSpaceID = 'CustomTriggerSpaceID',          ---触发区域ID
-	CustomTriggerSpaceKey = 'CustomTriggerSpaceKey',        ---触发区域编号
-	Damage = 'Damage',                                      ---伤害
-	DamageSchema = 'DamageSchema',                          ---伤害方案
-	Decoration = 'Decoration',                              ---装饰物
-	DecorationKey = 'DecorationKey',                        ---装饰物编号
-	DirectionType = 'DirectionType',                        ---方向枚举
-	DynamicTextID = 'DynamicTextID',                        ---动态文字ID
-	E3DLayer = 'E3DLayer',                                  ---场景UI实例
-	E3DLayerKey = 'E3DLayerKey',                            ---场景UI预设
-	EAnimationState = 'EAnimationState',                    ---UI动画状态
-	EBagSlot = 'EBagSlot',                                  ---UI物品槽位节点
-	EButton = 'EButton',                                    ---UI按钮节点
-	ECanvas = 'ECanvas',                                    ---UI画布节点
-	EEffectNode = 'EEffectNode',                            ---UI动效节点
-	EImage = 'EImage',                                      ---UI图片节点
-	EInputField = 'EInputField',                            ---UI输入节点
-	ELabel = 'ELabel',                                      ---UI文本节点
-	ENode = 'ENode',                                        ---UI节点
-	ENodeTouchEventType = 'ENodeTouchEventType',            ---界面交互事件类型
-	EProgressbar = 'EProgressbar',                          ---UI进度条节点
-	EmojiKey = 'EmojiKey',                                  ---气泡表情编号
-	Equipment = 'Equipment',                                ---物品
-	EquipmentID = 'EquipmentID',                            ---物品ID
-	EquipmentKey = 'EquipmentKey',                          ---物品编号
-	EquipmentSlot = 'EquipmentSlot',                        ---物品槽位
-	EquipmentSlotType = 'EquipmentSlotType',                ---物品槽位类型
-	EquipmentType = 'EquipmentType',                        ---物品类型
-	FaceExpressionKey = 'FaceExpressionKey',                ---面部表情编号
-	FaceStatusKey = 'FaceStatusKey',                        ---动态表情key
-	FashionKey = 'FashionKey',                              ---时装编号
-	Fixed = 'Fixed',                                        ---定点数
-	FontKey = 'FontKey',                                    ---字体key
-	FriendshipType = 'FriendshipType',                      ---好友关系
-	GameResult = 'GameResult',                              ---游戏结局
-	HpBarDisplayMode = 'HpBarDisplayMode',                  ---血条显示模式
-	ImageKey = 'ImageKey',                                  ---图片编号
-	InputStyleKey = 'InputStyleKey',                        ---输入框样式编号
-	Int = 'Int',                                            ---整型
-	InteractBtnID = 'InteractBtnID',                        ---交互按钮编号
-	InteractBtnType = 'InteractBtnType',                    ---交互按钮类型
-	JointAssistant = 'JointAssistant',                      ---关节
-	JointAssistantKey = 'JointAssistantKey',                ---关节预设编号
-	JointAssistantProperty = 'JointAssistantProperty',      ---关节属性
-	JointAssistantType = 'JointAssistantType',              ---关节类型
-	LabelStyleKey = 'LabelStyleKey',                        ---文本样式编号
-	LevelKey = 'LevelKey',                                  ---关卡编号
-	LifeEntity = 'LifeEntity',                              ---生命体
-	LifeEntityKey = 'LifeEntityKey',                        ---生命体编号
-	ListAIBasicCommand = 'ListAIBasicCommand',              ---AI基础命令类型列表
-	ListAbility = 'ListAbility',                            ---技能列表
-	ListAbilityAnchorID = 'ListAbilityAnchorID',            ---技能锚点ID列表
-	ListAbilityIndex = 'ListAbilityIndex',                  ---技能槽位(内部)列表
-	ListAbilityKey = 'ListAbilityKey',                      ---技能编号列表
-	ListAbilityLimitation = 'ListAbilityLimitation',        ---技能使用限制列表
-	ListAbilityPointerType = 'ListAbilityPointerType',      ---技能指示器类型列表
-	ListAbilitySlot = 'ListAbilitySlot',                    ---技能槽位列表
-	ListAbilityStyleKey = 'ListAbilityStyleKey',            ---技能控件样式编号列表
-	ListAchievement = 'ListAchievement',                    ---自定义成就列表
-	ListActor = 'ListActor',                                ---Actor列表
-	ListAnimKey = 'ListAnimKey',                            ---动画编号列表
-	ListAnimationStyleKey = 'ListAnimationStyleKey',        ---动效样式编号列表
-	ListArchive = 'ListArchive',                            ---自定义存档列表
-	ListArchiveType = 'ListArchiveType',                    ---存档类型列表
-	ListBagSlotStyleKey = 'ListBagSlotStyleKey',            ---物品格样式编号列表
-	ListBattleShopKey = 'ListBattleShopKey',                ---商店列表
-	ListBindType = 'ListBindType',                          ---绑定类型列表
-	ListBool = 'ListBool',                                  ---布尔值列表
-	ListBtnStyleKey = 'ListBtnStyleKey',                    ---按钮样式编号列表
-	ListBuffState = 'ListBuffState',                        ---状态列表
-	ListCameraBindMode = 'ListCameraBindMode',              ---相机绑定模式列表
-	ListCameraDragType = 'ListCameraDragType',              ---相机拖动类型列表
+	AIBasicCommand = 'AIBasicCommand',  ---AI基础命令类型
+	Ability = 'Ability',  ---技能
+	AbilityAnchorID = 'AbilityAnchorID',  ---技能锚点ID
+	AbilityIndex = 'AbilityIndex',  ---技能槽位(内部)
+	AbilityKey = 'AbilityKey',  ---技能编号
+	AbilityLimitation = 'AbilityLimitation',  ---技能使用限制
+	AbilityPointerType = 'AbilityPointerType',  ---技能指示器类型
+	AbilitySlot = 'AbilitySlot',  ---技能槽位
+	AbilityStyleKey = 'AbilityStyleKey',  ---技能控件样式编号
+	Achievement = 'Achievement',  ---自定义成就
+	Actor = 'Actor',  ---Actor
+	AnimKey = 'AnimKey',  ---动画编号
+	AnimationStyleKey = 'AnimationStyleKey',  ---动效样式编号
+	Archive = 'Archive',  ---自定义存档
+	ArchiveType = 'ArchiveType',  ---存档类型
+	BagSlotStyleKey = 'BagSlotStyleKey',  ---物品格样式编号
+	BattleShopKey = 'BattleShopKey',  ---商店
+	BindType = 'BindType',  ---绑定类型
+	Bool = 'Bool',  ---布尔值
+	BtnStyleKey = 'BtnStyleKey',  ---按钮样式编号
+	BuffState = 'BuffState',  ---状态
+	CameraBindMode = 'CameraBindMode',  ---相机绑定模式
+	CameraDragType = 'CameraDragType',  ---相机拖动类型
+	CameraProjectionType = 'CameraProjectionType',  ---相机投影类型
+	CameraPropertyType = 'CameraPropertyType',  ---相机属性预设
+	CameraShakeCurve = 'CameraShakeCurve',  ---屏幕震动曲线
+	CameraShakeType = 'CameraShakeType',  ---屏幕震动类型
+	Camp = 'Camp',  ---阵营
+	CampID = 'CampID',  ---阵营ID
+	CampRelationType = 'CampRelationType',  ---阵营关系类型
+	Character = 'Character',  ---角色
+	CharacterID = 'CharacterID',  ---角色ID
+	CharacterKey = 'CharacterKey',  ---角色编号
+	ChessType = 'ChessType',  ---麻将/扑克花色
+	CollisionLimitType = 'CollisionLimitType',  ---碰撞限制枚举
+	Color = 'Color',  ---颜色
+	Creature = 'Creature',  ---生物
+	CreatureID = 'CreatureID',  ---生物ID
+	CreatureKey = 'CreatureKey',  ---生物编号
+	CustomTriggerSpace = 'CustomTriggerSpace',  ---触发区域
+	CustomTriggerSpaceID = 'CustomTriggerSpaceID',  ---触发区域ID
+	CustomTriggerSpaceKey = 'CustomTriggerSpaceKey',  ---触发区域编号
+	Damage = 'Damage',  ---伤害
+	DamageSchema = 'DamageSchema',  ---伤害方案
+	Decoration = 'Decoration',  ---装饰物
+	DecorationKey = 'DecorationKey',  ---装饰物编号
+	DirectionType = 'DirectionType',  ---方向枚举
+	DynamicTextID = 'DynamicTextID',  ---动态文字ID
+	E3DLayer = 'E3DLayer',  ---场景UI实例
+	E3DLayerKey = 'E3DLayerKey',  ---场景UI预设
+	EAnimationState = 'EAnimationState',  ---UI动画状态
+	EBagSlot = 'EBagSlot',  ---UI物品槽位节点
+	EButton = 'EButton',  ---UI按钮节点
+	ECanvas = 'ECanvas',  ---UI画布节点
+	EEffectNode = 'EEffectNode',  ---UI动效节点
+	EImage = 'EImage',  ---UI图片节点
+	EInputField = 'EInputField',  ---UI输入节点
+	ELabel = 'ELabel',  ---UI文本节点
+	ENode = 'ENode',  ---UI节点
+	ENodeTouchEventType = 'ENodeTouchEventType',  ---界面交互事件类型
+	EProgressbar = 'EProgressbar',  ---UI进度条节点
+	EmojiKey = 'EmojiKey',  ---气泡表情编号
+	Equipment = 'Equipment',  ---物品
+	EquipmentID = 'EquipmentID',  ---物品ID
+	EquipmentKey = 'EquipmentKey',  ---物品编号
+	EquipmentSlot = 'EquipmentSlot',  ---物品槽位
+	EquipmentSlotType = 'EquipmentSlotType',  ---物品槽位类型
+	EquipmentType = 'EquipmentType',  ---物品类型
+	FaceExpressionKey = 'FaceExpressionKey',  ---面部表情编号
+	FaceStatusKey = 'FaceStatusKey',  ---动态表情key
+	FashionKey = 'FashionKey',  ---时装编号
+	Fixed = 'Fixed',  ---定点数
+	FontKey = 'FontKey',  ---字体key
+	FriendshipType = 'FriendshipType',  ---好友关系
+	GameResult = 'GameResult',  ---游戏结局
+	HpBarDisplayMode = 'HpBarDisplayMode',  ---血条显示模式
+	ImageKey = 'ImageKey',  ---图片编号
+	InputStyleKey = 'InputStyleKey',  ---输入框样式编号
+	Int = 'Int',  ---整型
+	InteractBtnID = 'InteractBtnID',  ---交互按钮编号
+	InteractBtnType = 'InteractBtnType',  ---交互按钮类型
+	JointAssistant = 'JointAssistant',  ---关节
+	JointAssistantKey = 'JointAssistantKey',  ---关节预设编号
+	JointAssistantProperty = 'JointAssistantProperty',  ---关节属性
+	JointAssistantType = 'JointAssistantType',  ---关节类型
+	LabelStyleKey = 'LabelStyleKey',  ---文本样式编号
+	LevelKey = 'LevelKey',  ---关卡编号
+	LifeEntity = 'LifeEntity',  ---生命体
+	LifeEntityKey = 'LifeEntityKey',  ---生命体编号
+	ListAIBasicCommand = 'ListAIBasicCommand',  ---AI基础命令类型列表
+	ListAbility = 'ListAbility',  ---技能列表
+	ListAbilityAnchorID = 'ListAbilityAnchorID',  ---技能锚点ID列表
+	ListAbilityIndex = 'ListAbilityIndex',  ---技能槽位(内部)列表
+	ListAbilityKey = 'ListAbilityKey',  ---技能编号列表
+	ListAbilityLimitation = 'ListAbilityLimitation',  ---技能使用限制列表
+	ListAbilityPointerType = 'ListAbilityPointerType',  ---技能指示器类型列表
+	ListAbilitySlot = 'ListAbilitySlot',  ---技能槽位列表
+	ListAbilityStyleKey = 'ListAbilityStyleKey',  ---技能控件样式编号列表
+	ListAchievement = 'ListAchievement',  ---自定义成就列表
+	ListActor = 'ListActor',  ---Actor列表
+	ListAnimKey = 'ListAnimKey',  ---动画编号列表
+	ListAnimationStyleKey = 'ListAnimationStyleKey',  ---动效样式编号列表
+	ListArchive = 'ListArchive',  ---自定义存档列表
+	ListArchiveType = 'ListArchiveType',  ---存档类型列表
+	ListBagSlotStyleKey = 'ListBagSlotStyleKey',  ---物品格样式编号列表
+	ListBattleShopKey = 'ListBattleShopKey',  ---商店列表
+	ListBindType = 'ListBindType',  ---绑定类型列表
+	ListBool = 'ListBool',  ---布尔值列表
+	ListBtnStyleKey = 'ListBtnStyleKey',  ---按钮样式编号列表
+	ListBuffState = 'ListBuffState',  ---状态列表
+	ListCameraBindMode = 'ListCameraBindMode',  ---相机绑定模式列表
+	ListCameraDragType = 'ListCameraDragType',  ---相机拖动类型列表
 	ListCameraProjectionType = 'ListCameraProjectionType',  ---相机投影类型列表
-	ListCameraPropertyType = 'ListCameraPropertyType',      ---相机属性预设列表
-	ListCameraShakeCurve = 'ListCameraShakeCurve',          ---屏幕震动曲线列表
-	ListCameraShakeType = 'ListCameraShakeType',            ---屏幕震动类型列表
-	ListCamp = 'ListCamp',                                  ---阵营列表
-	ListCampID = 'ListCampID',                              ---阵营ID列表
-	ListCampRelationType = 'ListCampRelationType',          ---阵营关系类型列表
-	ListCharacter = 'ListCharacter',                        ---角色列表
-	ListCharacterID = 'ListCharacterID',                    ---角色ID列表
-	ListCharacterKey = 'ListCharacterKey',                  ---角色编号列表
-	ListChessType = 'ListChessType',                        ---麻将/扑克花色列表
-	ListCollisionLimitType = 'ListCollisionLimitType',      ---碰撞限制枚举列表
-	ListColor = 'ListColor',                                ---颜色列表
-	ListCreature = 'ListCreature',                          ---生物列表
-	ListCreatureID = 'ListCreatureID',                      ---生物ID列表
-	ListCreatureKey = 'ListCreatureKey',                    ---生物编号列表
-	ListCustomTriggerSpace = 'ListCustomTriggerSpace',      ---触发区域列表
+	ListCameraPropertyType = 'ListCameraPropertyType',  ---相机属性预设列表
+	ListCameraShakeCurve = 'ListCameraShakeCurve',  ---屏幕震动曲线列表
+	ListCameraShakeType = 'ListCameraShakeType',  ---屏幕震动类型列表
+	ListCamp = 'ListCamp',  ---阵营列表
+	ListCampID = 'ListCampID',  ---阵营ID列表
+	ListCampRelationType = 'ListCampRelationType',  ---阵营关系类型列表
+	ListCharacter = 'ListCharacter',  ---角色列表
+	ListCharacterID = 'ListCharacterID',  ---角色ID列表
+	ListCharacterKey = 'ListCharacterKey',  ---角色编号列表
+	ListChessType = 'ListChessType',  ---麻将/扑克花色列表
+	ListCollisionLimitType = 'ListCollisionLimitType',  ---碰撞限制枚举列表
+	ListColor = 'ListColor',  ---颜色列表
+	ListCreature = 'ListCreature',  ---生物列表
+	ListCreatureID = 'ListCreatureID',  ---生物ID列表
+	ListCreatureKey = 'ListCreatureKey',  ---生物编号列表
+	ListCustomTriggerSpace = 'ListCustomTriggerSpace',  ---触发区域列表
 	ListCustomTriggerSpaceID = 'ListCustomTriggerSpaceID',  ---触发区域ID列表
-	ListCustomTriggerSpaceKey = 'ListCustomTriggerSpaceKey', ---触发区域编号列表
-	ListDamageSchema = 'ListDamageSchema',                  ---伤害方案列表
-	ListDecoration = 'ListDecoration',                      ---装饰物列表
-	ListDecorationKey = 'ListDecorationKey',                ---装饰物编号列表
-	ListDirectionType = 'ListDirectionType',                ---方向枚举列表
-	ListDynamicTextID = 'ListDynamicTextID',                ---动态文字ID列表
-	ListE3DLayer = 'ListE3DLayer',                          ---场景UI实例列表
-	ListE3DLayerKey = 'ListE3DLayerKey',                    ---场景UI预设列表
-	ListEAnimationState = 'ListEAnimationState',            ---UI动画状态列表
-	ListEBagSlot = 'ListEBagSlot',                          ---UI物品槽位节点列表
-	ListEButton = 'ListEButton',                            ---UI按钮节点列表
-	ListECanvas = 'ListECanvas',                            ---UI画布节点列表
-	ListEEffectNode = 'ListEEffectNode',                    ---UI动效节点列表
-	ListEImage = 'ListEImage',                              ---UI图片节点列表
-	ListEInputField = 'ListEInputField',                    ---UI输入节点列表
-	ListELabel = 'ListELabel',                              ---UI文本节点列表
-	ListENode = 'ListENode',                                ---UI节点列表
-	ListENodeTouchEventType = 'ListENodeTouchEventType',    ---界面交互事件类型列表
-	ListEProgressbar = 'ListEProgressbar',                  ---UI进度条节点列表
-	ListEmojiKey = 'ListEmojiKey',                          ---气泡表情编号列表
-	ListEquipment = 'ListEquipment',                        ---物品列表
-	ListEquipmentID = 'ListEquipmentID',                    ---物品ID列表
-	ListEquipmentKey = 'ListEquipmentKey',                  ---物品编号列表
-	ListEquipmentSlot = 'ListEquipmentSlot',                ---物品槽位列表
-	ListEquipmentSlotType = 'ListEquipmentSlotType',        ---物品槽位类型列表
-	ListEquipmentType = 'ListEquipmentType',                ---物品类型列表
-	ListFaceExpressionKey = 'ListFaceExpressionKey',        ---面部表情编号列表
-	ListFaceStatusKey = 'ListFaceStatusKey',                ---动态表情key列表
-	ListFashionKey = 'ListFashionKey',                      ---时装编号列表
-	ListFixed = 'ListFixed',                                ---定点数列表
-	ListFontKey = 'ListFontKey',                            ---字体key列表
-	ListFriendshipType = 'ListFriendshipType',              ---好友关系列表
-	ListGameResult = 'ListGameResult',                      ---游戏结局列表
-	ListHpBarDisplayMode = 'ListHpBarDisplayMode',          ---血条显示模式列表
-	ListImageKey = 'ListImageKey',                          ---图片编号列表
-	ListInputStyleKey = 'ListInputStyleKey',                ---输入框样式编号列表
-	ListInt = 'ListInt',                                    ---整型列表
-	ListInteractBtnID = 'ListInteractBtnID',                ---交互按钮编号列表
-	ListInteractBtnType = 'ListInteractBtnType',            ---交互按钮类型列表
-	ListJointAssistant = 'ListJointAssistant',              ---关节列表
-	ListJointAssistantKey = 'ListJointAssistantKey',        ---关节预设编号列表
-	ListJointAssistantProperty = 'ListJointAssistantProperty', ---关节属性列表
-	ListJointAssistantType = 'ListJointAssistantType',      ---关节类型列表
-	ListLabelStyleKey = 'ListLabelStyleKey',                ---文本样式编号列表
-	ListLevelKey = 'ListLevelKey',                          ---关卡编号列表
-	ListLifeEntity = 'ListLifeEntity',                      ---生命体列表
-	ListLifeEntityKey = 'ListLifeEntityKey',                ---生命体编号列表
-	ListModelSocket = 'ListModelSocket',                    ---部位列表
-	ListModifier = 'ListModifier',                          ---效果列表
-	ListModifierKey = 'ListModifierKey',                    ---效果编号列表
-	ListMontageKey = 'ListMontageKey',                      ---剧情动画编号列表
-	ListMoveMode = 'ListMoveMode',                          ---AI移动模式列表
-	ListObstacle = 'ListObstacle',                          ---组件列表
-	ListObstacleID = 'ListObstacleID',                      ---组件ID列表
-	ListObstacleKey = 'ListObstacleKey',                    ---组件编号列表
-	ListOrientationType = 'ListOrientationType',            ---方位枚举列表
-	ListPaintArea = 'ListPaintArea',                        ---染色区域列表
-	ListPathID = 'ListPathID',                              ---路径ID列表
-	ListPathPointID = 'ListPathPointID',                    ---路点ID列表
-	ListPatrolType = 'ListPatrolType',                      ---AI巡逻类型列表
-	ListPlaneType = 'ListPlaneType',                        ---拖动平面列表
-	ListProgressBarStyleKey = 'ListProgressBarStyleKey',    ---条形进度条样式编号列表
-	ListProgressTimerStyleKey = 'ListProgressTimerStyleKey', ---环形进度条样式编号列表
-	ListQuaternion = 'ListQuaternion',                      ---四元数列表
-	ListRigidBodyType = 'ListRigidBodyType',                ---物理类型列表
-	ListRole = 'ListRole',                                  ---玩家列表
-	ListRoleID = 'ListRoleID',                              ---玩家ID列表
-	ListSfxID = 'ListSfxID',                                ---特效ID列表
-	ListSfxKey = 'ListSfxKey',                              ---特效编号列表
-	ListSheetID = 'ListSheetID',                            ---表格列表
-	ListSkeleton = 'ListSkeleton',                          ---骨骼列表
-	ListSkyBoxBackground = 'ListSkyBoxBackground',          ---天空盒背景列表
-	ListSkyBoxGradualType = 'ListSkyBoxGradualType',        ---天空盒渐变类型列表
-	ListSound3DKey = 'ListSound3DKey',                      ---3D音效编号列表
-	ListSoundID = 'ListSoundID',                            ---音效ID列表
-	ListSoundKey = 'ListSoundKey',                          ---音效编号列表
-	ListStr = 'ListStr',                                    ---字符串列表
-	ListTimer = 'ListTimer',                                ---计时器列表
-	ListTimestamp = 'ListTimestamp',                        ---时间戳列表
-	ListTrigger = 'ListTrigger',                            ---触发器列表
-	ListTriggerSpace = 'ListTriggerSpace',                  ---逻辑体列表
-	ListTriggerSpaceEventType = 'ListTriggerSpaceEventType', ---触发区域类型列表
-	ListTriggerSpaceID = 'ListTriggerSpaceID',              ---逻辑体ID列表
-	ListTriggerSpaceKey = 'ListTriggerSpaceKey',            ---逻辑体编号列表
-	ListUIPreset = 'ListUIPreset',                          ---UIPreset列表
-	ListUIPresetNode = 'ListUIPresetNode',                  ---UI预设节点列表
-	ListUgcCommodity = 'ListUgcCommodity',                  ---道具列表
-	ListUgcGoods = 'ListUgcGoods',                          ---商品列表
-	ListUnit = 'ListUnit',                                  ---单位列表
-	ListUnitGroup = 'ListUnitGroup',                        ---物理组件组列表
-	ListUnitGroupKey = 'ListUnitGroupKey',                  ---组件组编号列表
-	ListUnitID = 'ListUnitID',                              ---单位ID列表
-	ListUnitKey = 'ListUnitKey',                            ---单位编号列表
-	ListUnitType = 'ListUnitType',                          ---单位类型列表
-	ListValueType = 'ListValueType',                        ---值类型列表
-	ListVector3 = 'ListVector3',                            ---向量列表
-	ListVehicle = 'ListVehicle',                            ---载具列表
-	ListVehicleKey = 'ListVehicleKey',                      ---单位编号(载具)列表
-	ListWindFieldShapeType = 'ListWindFieldShapeType',      ---风场形状列表
-	ModelSocket = 'ModelSocket',                            ---部位
-	Modifier = 'Modifier',                                  ---效果
-	ModifierKey = 'ModifierKey',                            ---效果编号
-	MontageKey = 'MontageKey',                              ---剧情动画编号
-	MoveMode = 'MoveMode',                                  ---AI移动模式
-	Obstacle = 'Obstacle',                                  ---组件
-	ObstacleID = 'ObstacleID',                              ---组件ID
-	ObstacleKey = 'ObstacleKey',                            ---组件编号
-	OrientationType = 'OrientationType',                    ---方位枚举
-	PaintArea = 'PaintArea',                                ---染色区域
-	PathID = 'PathID',                                      ---路径ID
-	PathPointID = 'PathPointID',                            ---路点ID
-	PatrolType = 'PatrolType',                              ---AI巡逻类型
-	PlaneType = 'PlaneType',                                ---拖动平面
-	ProgressBarStyleKey = 'ProgressBarStyleKey',            ---条形进度条样式编号
-	ProgressTimerStyleKey = 'ProgressTimerStyleKey',        ---环形进度条样式编号
-	Quaternion = 'Quaternion',                              ---四元数
-	RigidBodyType = 'RigidBodyType',                        ---物理类型
-	Role = 'Role',                                          ---玩家
-	RoleID = 'RoleID',                                      ---玩家ID
-	SfxID = 'SfxID',                                        ---特效ID
-	SfxKey = 'SfxKey',                                      ---特效编号
-	SheetID = 'SheetID',                                    ---表格
-	Skeleton = 'Skeleton',                                  ---骨骼
-	SkyBoxBackground = 'SkyBoxBackground',                  ---天空盒背景
-	SkyBoxGradualType = 'SkyBoxGradualType',                ---天空盒渐变类型
-	Sound3DKey = 'Sound3DKey',                              ---3D音效编号
-	SoundID = 'SoundID',                                    ---音效ID
-	SoundKey = 'SoundKey',                                  ---音效编号
-	Str = 'Str',                                            ---字符串
-	Timer = 'Timer',                                        ---计时器
-	Timestamp = 'Timestamp',                                ---时间戳
-	Trigger = 'Trigger',                                    ---触发器
-	TriggerSpace = 'TriggerSpace',                          ---逻辑体
-	TriggerSpaceEventType = 'TriggerSpaceEventType',        ---触发区域类型
-	TriggerSpaceID = 'TriggerSpaceID',                      ---逻辑体ID
-	TriggerSpaceKey = 'TriggerSpaceKey',                    ---逻辑体编号
-	UIPreset = 'UIPreset',                                  ---UIPreset
-	UIPresetNode = 'UIPresetNode',                          ---UI预设节点
-	UgcCommodity = 'UgcCommodity',                          ---道具
-	UgcGoods = 'UgcGoods',                                  ---商品
-	Unit = 'Unit',                                          ---单位
-	UnitGroup = 'UnitGroup',                                ---物理组件组
-	UnitGroupKey = 'UnitGroupKey',                          ---组件组编号
-	UnitID = 'UnitID',                                      ---单位ID
-	UnitKey = 'UnitKey',                                    ---单位编号
-	UnitType = 'UnitType',                                  ---单位类型
-	ValueType = 'ValueType',                                ---值类型
-	Vector3 = 'Vector3',                                    ---向量
-	Vehicle = 'Vehicle',                                    ---载具
-	VehicleKey = 'VehicleKey',                              ---单位编号(载具)
-	WindFieldShapeType = 'WindFieldShapeType',              ---风场形状
+	ListCustomTriggerSpaceKey = 'ListCustomTriggerSpaceKey',  ---触发区域编号列表
+	ListDamageSchema = 'ListDamageSchema',  ---伤害方案列表
+	ListDecoration = 'ListDecoration',  ---装饰物列表
+	ListDecorationKey = 'ListDecorationKey',  ---装饰物编号列表
+	ListDirectionType = 'ListDirectionType',  ---方向枚举列表
+	ListDynamicTextID = 'ListDynamicTextID',  ---动态文字ID列表
+	ListE3DLayer = 'ListE3DLayer',  ---场景UI实例列表
+	ListE3DLayerKey = 'ListE3DLayerKey',  ---场景UI预设列表
+	ListEAnimationState = 'ListEAnimationState',  ---UI动画状态列表
+	ListEBagSlot = 'ListEBagSlot',  ---UI物品槽位节点列表
+	ListEButton = 'ListEButton',  ---UI按钮节点列表
+	ListECanvas = 'ListECanvas',  ---UI画布节点列表
+	ListEEffectNode = 'ListEEffectNode',  ---UI动效节点列表
+	ListEImage = 'ListEImage',  ---UI图片节点列表
+	ListEInputField = 'ListEInputField',  ---UI输入节点列表
+	ListELabel = 'ListELabel',  ---UI文本节点列表
+	ListENode = 'ListENode',  ---UI节点列表
+	ListENodeTouchEventType = 'ListENodeTouchEventType',  ---界面交互事件类型列表
+	ListEProgressbar = 'ListEProgressbar',  ---UI进度条节点列表
+	ListEmojiKey = 'ListEmojiKey',  ---气泡表情编号列表
+	ListEquipment = 'ListEquipment',  ---物品列表
+	ListEquipmentID = 'ListEquipmentID',  ---物品ID列表
+	ListEquipmentKey = 'ListEquipmentKey',  ---物品编号列表
+	ListEquipmentSlot = 'ListEquipmentSlot',  ---物品槽位列表
+	ListEquipmentSlotType = 'ListEquipmentSlotType',  ---物品槽位类型列表
+	ListEquipmentType = 'ListEquipmentType',  ---物品类型列表
+	ListFaceExpressionKey = 'ListFaceExpressionKey',  ---面部表情编号列表
+	ListFaceStatusKey = 'ListFaceStatusKey',  ---动态表情key列表
+	ListFashionKey = 'ListFashionKey',  ---时装编号列表
+	ListFixed = 'ListFixed',  ---定点数列表
+	ListFontKey = 'ListFontKey',  ---字体key列表
+	ListFriendshipType = 'ListFriendshipType',  ---好友关系列表
+	ListGameResult = 'ListGameResult',  ---游戏结局列表
+	ListHpBarDisplayMode = 'ListHpBarDisplayMode',  ---血条显示模式列表
+	ListImageKey = 'ListImageKey',  ---图片编号列表
+	ListInputStyleKey = 'ListInputStyleKey',  ---输入框样式编号列表
+	ListInt = 'ListInt',  ---整型列表
+	ListInteractBtnID = 'ListInteractBtnID',  ---交互按钮编号列表
+	ListInteractBtnType = 'ListInteractBtnType',  ---交互按钮类型列表
+	ListJointAssistant = 'ListJointAssistant',  ---关节列表
+	ListJointAssistantKey = 'ListJointAssistantKey',  ---关节预设编号列表
+	ListJointAssistantProperty = 'ListJointAssistantProperty',  ---关节属性列表
+	ListJointAssistantType = 'ListJointAssistantType',  ---关节类型列表
+	ListLabelStyleKey = 'ListLabelStyleKey',  ---文本样式编号列表
+	ListLevelKey = 'ListLevelKey',  ---关卡编号列表
+	ListLifeEntity = 'ListLifeEntity',  ---生命体列表
+	ListLifeEntityKey = 'ListLifeEntityKey',  ---生命体编号列表
+	ListModelSocket = 'ListModelSocket',  ---部位列表
+	ListModifier = 'ListModifier',  ---效果列表
+	ListModifierKey = 'ListModifierKey',  ---效果编号列表
+	ListMontageKey = 'ListMontageKey',  ---剧情动画编号列表
+	ListMoveMode = 'ListMoveMode',  ---AI移动模式列表
+	ListObstacle = 'ListObstacle',  ---组件列表
+	ListObstacleID = 'ListObstacleID',  ---组件ID列表
+	ListObstacleKey = 'ListObstacleKey',  ---组件编号列表
+	ListOrientationType = 'ListOrientationType',  ---方位枚举列表
+	ListPaintArea = 'ListPaintArea',  ---染色区域列表
+	ListPathID = 'ListPathID',  ---路径ID列表
+	ListPathPointID = 'ListPathPointID',  ---路点ID列表
+	ListPatrolType = 'ListPatrolType',  ---AI巡逻类型列表
+	ListPlaneType = 'ListPlaneType',  ---拖动平面列表
+	ListProgressBarStyleKey = 'ListProgressBarStyleKey',  ---条形进度条样式编号列表
+	ListProgressTimerStyleKey = 'ListProgressTimerStyleKey',  ---环形进度条样式编号列表
+	ListQuaternion = 'ListQuaternion',  ---四元数列表
+	ListRigidBodyType = 'ListRigidBodyType',  ---物理类型列表
+	ListRole = 'ListRole',  ---玩家列表
+	ListRoleID = 'ListRoleID',  ---玩家ID列表
+	ListSfxID = 'ListSfxID',  ---特效ID列表
+	ListSfxKey = 'ListSfxKey',  ---特效编号列表
+	ListSheetID = 'ListSheetID',  ---表格列表
+	ListSkeleton = 'ListSkeleton',  ---骨骼列表
+	ListSkyBoxBackground = 'ListSkyBoxBackground',  ---天空盒背景列表
+	ListSkyBoxGradualType = 'ListSkyBoxGradualType',  ---天空盒渐变类型列表
+	ListSound3DKey = 'ListSound3DKey',  ---3D音效编号列表
+	ListSoundID = 'ListSoundID',  ---音效ID列表
+	ListSoundKey = 'ListSoundKey',  ---音效编号列表
+	ListStr = 'ListStr',  ---字符串列表
+	ListTimer = 'ListTimer',  ---计时器列表
+	ListTimestamp = 'ListTimestamp',  ---时间戳列表
+	ListTrigger = 'ListTrigger',  ---触发器列表
+	ListTriggerSpace = 'ListTriggerSpace',  ---逻辑体列表
+	ListTriggerSpaceEventType = 'ListTriggerSpaceEventType',  ---触发区域类型列表
+	ListTriggerSpaceID = 'ListTriggerSpaceID',  ---逻辑体ID列表
+	ListTriggerSpaceKey = 'ListTriggerSpaceKey',  ---逻辑体编号列表
+	ListUIPreset = 'ListUIPreset',  ---UIPreset列表
+	ListUIPresetNode = 'ListUIPresetNode',  ---UI预设节点列表
+	ListUgcCommodity = 'ListUgcCommodity',  ---道具列表
+	ListUgcGoods = 'ListUgcGoods',  ---商品列表
+	ListUnit = 'ListUnit',  ---单位列表
+	ListUnitGroup = 'ListUnitGroup',  ---物理组件组列表
+	ListUnitGroupKey = 'ListUnitGroupKey',  ---组件组编号列表
+	ListUnitID = 'ListUnitID',  ---单位ID列表
+	ListUnitKey = 'ListUnitKey',  ---单位编号列表
+	ListUnitType = 'ListUnitType',  ---单位类型列表
+	ListValueType = 'ListValueType',  ---值类型列表
+	ListVector3 = 'ListVector3',  ---向量列表
+	ListVehicle = 'ListVehicle',  ---载具列表
+	ListVehicleKey = 'ListVehicleKey',  ---单位编号(载具)列表
+	ListWindFieldShapeType = 'ListWindFieldShapeType',  ---风场形状列表
+	ModelSocket = 'ModelSocket',  ---部位
+	Modifier = 'Modifier',  ---效果
+	ModifierKey = 'ModifierKey',  ---效果编号
+	MontageKey = 'MontageKey',  ---剧情动画编号
+	MoveMode = 'MoveMode',  ---AI移动模式
+	Obstacle = 'Obstacle',  ---组件
+	ObstacleID = 'ObstacleID',  ---组件ID
+	ObstacleKey = 'ObstacleKey',  ---组件编号
+	OrientationType = 'OrientationType',  ---方位枚举
+	PaintArea = 'PaintArea',  ---染色区域
+	PathID = 'PathID',  ---路径ID
+	PathPointID = 'PathPointID',  ---路点ID
+	PatrolType = 'PatrolType',  ---AI巡逻类型
+	PlaneType = 'PlaneType',  ---拖动平面
+	ProgressBarStyleKey = 'ProgressBarStyleKey',  ---条形进度条样式编号
+	ProgressTimerStyleKey = 'ProgressTimerStyleKey',  ---环形进度条样式编号
+	Quaternion = 'Quaternion',  ---四元数
+	RigidBodyType = 'RigidBodyType',  ---物理类型
+	Role = 'Role',  ---玩家
+	RoleID = 'RoleID',  ---玩家ID
+	SfxID = 'SfxID',  ---特效ID
+	SfxKey = 'SfxKey',  ---特效编号
+	SheetID = 'SheetID',  ---表格
+	Skeleton = 'Skeleton',  ---骨骼
+	SkyBoxBackground = 'SkyBoxBackground',  ---天空盒背景
+	SkyBoxGradualType = 'SkyBoxGradualType',  ---天空盒渐变类型
+	Sound3DKey = 'Sound3DKey',  ---3D音效编号
+	SoundID = 'SoundID',  ---音效ID
+	SoundKey = 'SoundKey',  ---音效编号
+	Str = 'Str',  ---字符串
+	Timer = 'Timer',  ---计时器
+	Timestamp = 'Timestamp',  ---时间戳
+	Trigger = 'Trigger',  ---触发器
+	TriggerSpace = 'TriggerSpace',  ---逻辑体
+	TriggerSpaceEventType = 'TriggerSpaceEventType',  ---触发区域类型
+	TriggerSpaceID = 'TriggerSpaceID',  ---逻辑体ID
+	TriggerSpaceKey = 'TriggerSpaceKey',  ---逻辑体编号
+	UIPreset = 'UIPreset',  ---UIPreset
+	UIPresetNode = 'UIPresetNode',  ---UI预设节点
+	UgcCommodity = 'UgcCommodity',  ---道具
+	UgcGoods = 'UgcGoods',  ---商品
+	Unit = 'Unit',  ---单位
+	UnitGroup = 'UnitGroup',  ---物理组件组
+	UnitGroupKey = 'UnitGroupKey',  ---组件组编号
+	UnitID = 'UnitID',  ---单位ID
+	UnitKey = 'UnitKey',  ---单位编号
+	UnitType = 'UnitType',  ---单位类型
+	ValueType = 'ValueType',  ---值类型
+	Vector3 = 'Vector3',  ---向量
+	Vehicle = 'Vehicle',  ---载具
+	VehicleKey = 'VehicleKey',  ---单位编号(载具)
+	WindFieldShapeType = 'WindFieldShapeType',  ---风场形状
 }
 
 ---@enum Enums.WindFieldShapeType 风场形状
 Enums.WindFieldShapeType = {
-	CONICAL = 0, ---锥形
-	SECTOR = 1, ---扇形
-	WAVE = 2, ---波浪形
+	CONICAL = 0,  ---锥形
+	SECTOR = 1,  ---扇形
+	WAVE = 2,  ---波浪形
 }
 
 ---@class GlobalAPI
@@ -1243,8 +1243,7 @@ function GlobalAPI.add_kill_broadcast(_kill_char, _dead_char, _duration) end
 ---@param _duration Fixed 变换时长
 ---@deprecated
 ---@see GlobalAPI.set_render_color
-function GlobalAPI.change_render_color(_hue, _brightness, _saturation, _contrast, _amount, _mid_tones, _mid_tones_power,
-									   _shadows, _shadows_power, _highlight, _highlight_power, _duration) end
+function GlobalAPI.change_render_color(_hue, _brightness, _saturation, _contrast, _amount, _mid_tones, _mid_tones_power, _shadows, _shadows_power, _highlight, _highlight_power, _duration) end
 
 ---Debug窗口打印日志
 ---@param _content string 内容
@@ -1322,8 +1321,7 @@ function GlobalAPI.set_direct_light(_param_dict, _duration) end
 ---@param _highlight Color 亮部偏色
 ---@param _highlight_power Fixed 亮部偏色程度
 ---@param _duration Fixed 变换时长
-function GlobalAPI.set_render_color(_hue, _brightness, _saturation, _contrast, _amount, _mid_tones, _mid_tones_power,
-									_shadows, _shadows_power, _highlight, _highlight_power, _duration) end
+function GlobalAPI.set_render_color(_hue, _brightness, _saturation, _contrast, _amount, _mid_tones, _mid_tones_power, _shadows, _shadows_power, _highlight, _highlight_power, _duration) end
 
 ---设置特效旋转
 ---@param _sfx_id SfxID 特效ID
@@ -2961,6 +2959,20 @@ function GameAPI.add_sheet_column(_sheet_id, _key, _type_name) end
 ---@see GameAPI.add_sheet_column
 function GameAPI.add_table_column(_sheet_id, _key, _type_name) end
 
+---将可编辑图片应用为单位模型贴图
+---@param _unit Unit 单位
+---@param _image_key ImageKey 可编辑图像
+function GameAPI.apply_editable_image_to_unit(_unit, _image_key) end
+
+---将可编辑图片内容拷贝到另一张可编辑图片
+---@param _src_image_key ImageKey 源图像
+---@param _dst_image_key ImageKey 目标图像
+function GameAPI.blit_editable_image(_src_image_key, _dst_image_key) end
+
+---清空可编辑图片(填充透明)
+---@param _image_key ImageKey 可编辑图像
+function GameAPI.clear_editable_image(_image_key) end
+
 ---清空表
 ---@param _sheet_id SheetID 表格
 function GameAPI.clear_sheet(_sheet_id) end
@@ -3040,6 +3052,12 @@ function GameAPI.create_customtriggerspace(_u_key, _pos, _rotation, _scale, _rol
 ---@return Decoration 创建的装饰物
 function GameAPI.create_decoration(_u_key, _pos, _rotation, _scale, _parent) end
 
+---创建可编辑图片
+---@param _width Fixed? 宽
+---@param _height Fixed? 高
+---@return ImageKey 可编辑图像
+function GameAPI.create_editable_image(_width, _height) end
+
 ---创建物品到坐标点
 ---@param _equipment_eid EquipmentKey 物品编号
 ---@param _pos Vector3 位置
@@ -3065,8 +3083,7 @@ function GameAPI.create_equipment_in_scene(_equipment_eid, _pos) end
 ---@param _show_name boolean 显示技能名称
 ---@param _name string 名称
 ---@return EButton 技能控件
-function GameAPI.create_eui_ability_at_position(_ability_style_key, _parent, _x, _y, _width, _height, _show_when_empty,
-												_show_name, _name) end
+function GameAPI.create_eui_ability_at_position(_ability_style_key, _parent, _x, _y, _width, _height, _show_when_empty, _show_name, _name) end
 
 ---创建动效节点
 ---@param _animation_style_key AnimationStyleKey 动效预设编号
@@ -3268,8 +3285,7 @@ function GameAPI.create_sfx_with_socket(_sfx_key, _unit, _socket_name, _scale, _
 ---@param _duration Fixed 持续时间
 ---@param _bind_type Enums.BindType 绑定方式
 ---@return SfxID 特效ID
-function GameAPI.create_sfx_with_socket_offset(_sfx_key, _unit, _socket_name, _offset, _rot, _scale, _duration,
-											   _bind_type) end
+function GameAPI.create_sfx_with_socket_offset(_sfx_key, _unit, _socket_name, _offset, _rot, _scale, _duration, _bind_type) end
 
 ---创建表
 ---@return SheetID 表格
@@ -3387,6 +3403,10 @@ function GameAPI.del_road_point(_path_id, _index) end
 ---@param _unit Vehicle 载具
 function GameAPI.delay_destroy_vehicle(_unit) end
 
+---销毁可编辑图片
+---@param _image_key ImageKey 可编辑图像
+function GameAPI.destroy_editable_image(_image_key) end
+
 ---销毁界面节点
 ---@param _node ENode 节点
 function GameAPI.destroy_eui_node(_node) end
@@ -3455,6 +3475,11 @@ function GameAPI.equipment_prefab_get_kv_by_type(_value_type, _key, _prop) end
 ---@param _prop string 名称
 ---@return boolean 是否存在
 function GameAPI.equipment_prefab_has_kv(_equipment_key, _prop) end
+
+---用纯色填充可编辑图片
+---@param _image_key ImageKey 可编辑图像
+---@param _color Color? 颜色
+function GameAPI.fill_editable_image(_image_key, _color) end
 
 ---创建一个组件组
 ---@param _unit_group_id UnitGroupKey 单位编号
@@ -4195,6 +4220,14 @@ function GameAPI.obstacle_prefab_get_prop_by_type(_value_type, _key, _prop) end
 ---@return boolean 是否存在
 function GameAPI.obstacle_prefab_has_kv(_key, _prop) end
 
+---在单位模型表面绘制一笔球形笔刷(世界坐标)
+---@param _unit Unit 单位
+---@param _image_key ImageKey 可编辑图像
+---@param _point Vector3 世界坐标点
+---@param _radius Fixed? 笔刷半径
+---@param _color Color? 笔刷颜色
+function GameAPI.paint_brush_world(_unit, _image_key, _point, _radius, _color) end
+
 ---单位开始播放3d音效
 ---@param _position Vector3 发声位置
 ---@param _sound_key SoundKey 声音编号
@@ -4278,8 +4311,7 @@ function GameAPI.register_geometry_box(_size, _chamfer_radius, _chamfer_level, _
 ---@param _bend Fixed 弯曲度
 ---@param _preconf table 扩展配置（预留 ）
 ---@return string 几何体路径，用于create_obstacle_from_geometry
-function GameAPI.register_geometry_frustum(_height, _inner_radius, _outer_radius, _inner_poly_count, _outer_poly_count,
-										   _chamfer_radius, _angle, _layer, _bend, _preconf) end
+function GameAPI.register_geometry_frustum(_height, _inner_radius, _outer_radius, _inner_poly_count, _outer_poly_count, _chamfer_radius, _angle, _layer, _bend, _preconf) end
 
 ---注册一个几何体：圆环（可变形）
 ---@param _height Fixed 高度
@@ -4291,8 +4323,7 @@ function GameAPI.register_geometry_frustum(_height, _inner_radius, _outer_radius
 ---@param _angle Fixed 角度
 ---@param _preconf table 扩展配置（预留 ）
 ---@return string 几何体路径，用于create_obstacle_from_geometry
-function GameAPI.register_geometry_ring(_height, _inner_radius, _outer_radius, _inner_poly_count, _outer_poly_count,
-										_chamfer_radius, _angle, _preconf) end
+function GameAPI.register_geometry_ring(_height, _inner_radius, _outer_radius, _inner_poly_count, _outer_poly_count, _chamfer_radius, _angle, _preconf) end
 
 ---注册一个几何体：自定义曲线/曲面
 ---@param _is_rope boolean 是否为曲线
@@ -4304,8 +4335,7 @@ function GameAPI.register_geometry_ring(_height, _inner_radius, _outer_radius, _
 ---@param _depth Fixed 厚度（仅用于曲面）
 ---@param _preconf table 扩展配置（预留 ）
 ---@return string 几何体路径，用于create_obstacle_from_geometry
-function GameAPI.register_geometry_spline(_is_rope, _pos_list, _normal_list, _radius_list, _dist_precision,
-										  _normal_precision, _depth, _preconf) end
+function GameAPI.register_geometry_spline(_is_rope, _pos_list, _normal_list, _radius_list, _dist_precision, _normal_precision, _depth, _preconf) end
 
 ---从游戏全局移除指定路点
 ---@param _path_id PathID 路径
@@ -4389,9 +4419,7 @@ function GameAPI.set_equipment_remaining_stock_count(_battle_shop_key, _equipmen
 ---@param _bottom_enable boolean 启用下侧
 ---@param _bottom_is_percent boolean 启用百分比
 ---@param _bottom_value Fixed 值
-function GameAPI.set_eui_node_auto_adaption(_node, _left_enable, _left_is_percent, _left_value, _right_enable,
-											_right_is_percent, _right_value, _top_enable, _top_is_percent, _top_value,
-											_bottom_enable, _bottom_is_percent, _bottom_value) end
+function GameAPI.set_eui_node_auto_adaption(_node, _left_enable, _left_is_percent, _left_value, _right_enable, _right_is_percent, _right_value, _top_enable, _top_is_percent, _top_value, _bottom_enable, _bottom_is_percent, _bottom_value) end
 
 ---设置节点屏幕居中配置，顺序为：水平 垂直。（开启百分比时，值的单位是百分比）
 ---@param _node ENode 节点
@@ -4401,8 +4429,7 @@ function GameAPI.set_eui_node_auto_adaption(_node, _left_enable, _left_is_percen
 ---@param _vertical_center boolean 启用垂直居中
 ---@param _vertical_is_percent boolean 启用百分比
 ---@param _vertical_value Fixed 值
-function GameAPI.set_eui_node_auto_center(_node, _horizontal_center, _horizontal_is_percent, _horizontal_value,
-										  _vertical_center, _vertical_is_percent, _vertical_value) end
+function GameAPI.set_eui_node_auto_center(_node, _horizontal_center, _horizontal_is_percent, _horizontal_value, _vertical_center, _vertical_is_percent, _vertical_value) end
 
 ---设置节点下侧屏幕自适应配置
 ---@param _node ENode 节点
@@ -4736,8 +4763,7 @@ function KVBase.set_billboard_content(_content) end
 ---@param _gradient_color_4 Color? 渐变色4
 ---@deprecated
 ---@see Obstacle.set_billboard_text_color
-function KVBase.set_billboard_font_color(_color, _gradient_color_1, _gradient_color_2, _gradient_color_3,
-										 _gradient_color_4) end
+function KVBase.set_billboard_font_color(_color, _gradient_color_1, _gradient_color_2, _gradient_color_3, _gradient_color_4) end
 
 ---设置公告板文本字体大小
 ---@param _font_size integer 字体大小
@@ -4753,8 +4779,7 @@ function KVBase.set_billboard_font_size(_font_size) end
 ---@param _gradient_color_4 Color? 渐变色4
 ---@deprecated
 ---@see Obstacle.set_billboard_text_color
-function KVBase.set_billboard_text_color(_color, _gradient_color_1, _gradient_color_2, _gradient_color_3,
-										 _gradient_color_4) end
+function KVBase.set_billboard_text_color(_color, _gradient_color_1, _gradient_color_2, _gradient_color_3, _gradient_color_4) end
 
 ---设置自定义值
 ---@param _value_type Enums.ValueType 值类型
@@ -4920,8 +4945,7 @@ function LifeEntity.ai_command_alert(_tagert_pos, _target_dir, _dalay_time, _rej
 ---@param _ability_key AbilityKey 反应行为
 ---@param _move_mode Enums.MoveMode 移动方式
 ---@param _action_count integer 追击次数
-function LifeEntity.ai_command_chase_with_ability(_target, _chase_range, _reject_time, _action_distance, _ability_key,
-												  _move_mode, _action_count) end
+function LifeEntity.ai_command_chase_with_ability(_target, _chase_range, _reject_time, _action_distance, _ability_key, _move_mode, _action_count) end
 
 ---控制AI执行追击行为(命令)
 ---@param _target Unit 目标
@@ -4931,8 +4955,7 @@ function LifeEntity.ai_command_chase_with_ability(_target, _chase_range, _reject
 ---@param _action_mode Enums.AIBasicCommand 反应行为
 ---@param _move_mode Enums.MoveMode 移动方式
 ---@param _action_count integer 追击次数
-function LifeEntity.ai_command_chase_with_action(_target, _chase_range, _reject_time, _action_distance, _action_mode,
-												 _move_mode, _action_count) end
+function LifeEntity.ai_command_chase_with_action(_target, _chase_range, _reject_time, _action_distance, _action_mode, _move_mode, _action_count) end
 
 ---控制AI执行追击行为(物品)
 ---@param _target Unit 目标
@@ -4942,8 +4965,7 @@ function LifeEntity.ai_command_chase_with_action(_target, _chase_range, _reject_
 ---@param _equipment_key EquipmentKey 反应行为
 ---@param _move_mode Enums.MoveMode 移动方式
 ---@param _action_count integer 追击次数
-function LifeEntity.ai_command_chase_with_equipment(_target, _chase_range, _reject_time, _action_distance, _equipment_key,
-													_move_mode, _action_count) end
+function LifeEntity.ai_command_chase_with_equipment(_target, _chase_range, _reject_time, _action_distance, _equipment_key, _move_mode, _action_count) end
 
 ---控制AI执行跟随命令
 ---@param _target_unit Unit 目标
@@ -5033,8 +5055,7 @@ function LifeEntity.change_model_by_creature(_creature, _include_custom_model, _
 ---@param _inherit_capsule_size boolean? 是否继承胶囊体
 ---@deprecated
 ---@see LifeEntity.set_model_by_creature_key
-function LifeEntity.change_model_by_creature_key(_creature_key, _include_custom_model, _inherit_scale,
-												 _inherit_capsule_size) end
+function LifeEntity.change_model_by_creature_key(_creature_key, _include_custom_model, _inherit_scale, _inherit_capsule_size) end
 
 ---关闭单位最大旋转速度限制
 function LifeEntity.disable_yaw_speed_limit() end
@@ -5257,6 +5278,7 @@ function LifeEntity.set_skeleton_scale(_skeleton, _scale) end
 
 ---发送气泡信息
 ---@param _show_msg string 气泡信息
+---@param _show_time Fixed 持续时间
 ---@param _max_dis Fixed? 隐藏距离
 ---@param _offset Vector3? 偏移
 ---@deprecated
@@ -5822,8 +5844,7 @@ function Obstacle.set_billboard_text(_content) end
 ---@param _gradient_color_2 Color? 渐变色2
 ---@param _gradient_color_3 Color? 渐变色3
 ---@param _gradient_color_4 Color? 渐变色4
-function Obstacle.set_billboard_text_color(_color, _gradient_color_1, _gradient_color_2, _gradient_color_3,
-										   _gradient_color_4) end
+function Obstacle.set_billboard_text_color(_color, _gradient_color_1, _gradient_color_2, _gradient_color_3, _gradient_color_4) end
 
 ---设置牌面(对象只能为麻将/扑克)
 ---@param _card_type ChessType 牌名
@@ -6656,8 +6677,7 @@ function Role.set_voice_volume_sync_enabled(_enabled) end
 ---@param _shake_effect_scope Fixed 生效范围
 ---@param _shake_undamped_scope Fixed 不衰减范围
 ---@param _shake_distance_decay Fixed 距离衰减
-function Role.shake_camera(_shake_type, _shake_max_amplitude, _shake_time, _shake_source, _shake_frequency,
-						   _shake_time_decay, _shake_effect_scope, _shake_undamped_scope, _shake_distance_decay) end
+function Role.shake_camera(_shake_type, _shake_max_amplitude, _shake_time, _shake_source, _shake_frequency, _shake_time_decay, _shake_effect_scope, _shake_undamped_scope, _shake_distance_decay) end
 
 ---设置玩家的背包界面显隐
 ---@param _visible boolean 是否显示
@@ -6834,8 +6854,7 @@ SceneUI = {}
 ---@param _bind_event boolean? 事件是否指向绑定者
 ---@param _inherit_visible boolean? 是否跟随组件显隐
 ---@return E3DLayer 场景界面
-function SceneUI.create_scene_ui_bind_unit(_layer_key, _socket_name, _offset_pos, _duration, _bind_event,
-										   _inherit_visible) end
+function SceneUI.create_scene_ui_bind_unit(_layer_key, _socket_name, _offset_pos, _duration, _bind_event, _inherit_visible) end
 
 ---@class TriggerSpace: ExprDeviceComp, OwnerComp, SceneUI, Unit, UnitInteractVolumeComp
 TriggerSpace = {}
@@ -9812,3 +9831,4 @@ LuaAPI.global_register_trigger_event({EVENT.UI_CUSTOM_EVENT, _name}, function(ev
 end)
 --]]
 EVENT.UI_CUSTOM_EVENT = "UI_CUSTOM_EVENT"
+

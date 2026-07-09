@@ -1,5 +1,6 @@
 local Class = require("BaseClass")
 local FlightDriver = require("BabyStorm.Core.Drivers.FlightDriver")
+local Timer = require("BabyStorm.Core.Timer")
 local UINodes = require("Data.UINodes")
 local Prefab = require("Data.Prefab")
 local MathX = require("Util.MathX")
@@ -8,18 +9,18 @@ local Log = require("Util.Log")
 -- ============================================================
 -- CatapultLaunchService —— 投石车发射（需求驱动）
 -- ============================================================
--- 需求链路：宝宝持“想被发射”需求 → 玩家抱宝宝放到投臂上 → FacilityService 走 catapult 分支，
---   把宝宝“骑”到投臂上（每帧硬粘到臂的 socket_origin + 跟随朝向，见 FacilityService:_begin_catapult）。
+-- 需求链路：宝宝持“想被发射”需求 → 玩家抱宝宝放到投臂上 → CatapultInteraction 子状态
+--   把宝宝“骑”到投臂上（FollowDriver 每帧硬粘到臂的 socket_origin + 跟随朝向）。
 -- 发射：玩家点 launcher_btn → 本服务找到骑在投臂上的宝宝 → 等 launch_delay（宝宝随臂摆到接近顶点）
---   → 停止骑乘跟随、用 FlightDriver 把宝宝抛物线甩到 launch_target → 落地调 complete_facility_interaction
---   结算需求（→ Satisfied → 下一个需求）。
+--   → 经 agent:handle_event 通知子状态停跟随、用 FlightDriver 把宝宝抛物线甩到 launch_target
+--   → 落地调 complete_facility_interaction 结算需求（→ Satisfied → 下一个需求）。
 -- 投臂摆动由编辑器运动器负责（表现）；宝宝全程是脚本按帧定位的运动学单位、且与臂关闭碰撞，
 -- 运动器的物理发射碰不到它——轨迹完全由脚本决定。
 -- 发射参数（落点/延迟/时长/拱高）都在 catapult 需求 def 里，见 BabyStormConfig。
 ---@class CatapultLaunchService
 ---@field config BabyStormConfig
 ---@field triggers TriggerRegistry
----@field facility FacilityService|nil
+---@field facility FacilityRegistry|nil
 ---@field flight FlightDriver
 ---@field active table|nil   -- { agent = BabyAgent, facility = BabyFacilityRecord }
 ---@field canvas_layer any
@@ -52,10 +53,9 @@ function CatapultLaunchService:Ctor(config, triggers)
     self.flight = FlightDriver.New()
     self.active = nil
     self.canvas_layer = nil
-    self._delay_token = 0
 end
 
----@param facility FacilityService
+---@param facility FacilityRegistry
 function CatapultLaunchService:set_facility_service(facility)
     self.facility = facility
 end
@@ -163,10 +163,8 @@ function CatapultLaunchService:_begin_launch(agent, facility)
     agent:set_status("发射准备！")
 
     local delay = facility.def.launch_delay or DEFAULT_LAUNCH_DELAY
-    self._delay_token = self._delay_token + 1
-    local token = self._delay_token
-    LuaAPI.call_delay_time(delay, function()
-        if self.active and self._delay_token == token then
+    Timer.once(self, delay, function()
+        if self.active then
             self:_do_launch()
         end
     end)
@@ -182,9 +180,9 @@ function CatapultLaunchService:_do_launch()
         return
     end
 
-    -- 停止骑乘跟随：置 seat_token 失效，_sync_seat 下一拍停止，位移交给 FlightDriver 独占。
-    -- 仍保留 facility.active_agent 与骑乘锁，落地才结算——中途不释放，避免 AI 抢回控制。
-    facility.seat_token = nil
+    -- 停止骑乘跟随：通知 CatapultInteraction 停掉 FollowDriver，位移交给 FlightDriver 独占。
+    -- 仍保留设施占用与动作锁，落地才结算——中途不释放，避免 AI 抢回控制。
+    agent:handle_event({ type = "catapult_launch" })
 
     local from = unit.get_position()
     local to = MathX.to_vector3(facility.def.launch_target) or from
@@ -208,8 +206,8 @@ function CatapultLaunchService:_on_landed()
     local agent = self.active and self.active.agent or nil
     local facility = self.active and self.active.facility or nil
     if agent and not agent.destroyed and facility then
-        -- 结算设施交互：end_interaction 走 _end_catapult（解锁骑乘、恢复碰撞、停坐姿动画），
-        -- 随后进入 Satisfied → 满足需求 → 下一个需求。
+        -- 结算设施交互：切 Satisfied 时 InteractingFacilityState:exit 统一收尾
+        --（解锁、恢复碰撞、停坐姿动画），随后满足需求 → 下一个需求。
         agent:complete_facility_interaction(facility)
         Log.info("catapult landed", "baby", agent.index)
     end
@@ -223,7 +221,7 @@ function CatapultLaunchService:_abort(reason)
     local agent = self.active and self.active.agent or nil
     local facility = self.active and self.active.facility or nil
     if agent and not agent.destroyed and facility then
-        pcall(function() agent:fail_facility_interaction(facility) end)
+        agent:fail_facility_interaction(facility)
     end
     self.active = nil
     Log.info("catapult launch aborted", reason)
@@ -235,6 +233,7 @@ function CatapultLaunchService:update(_dt)
 end
 
 function CatapultLaunchService:destroy()
+    Timer.cancel_all(self)
     self.flight:stop()
     self.active = nil
     self.facility = nil

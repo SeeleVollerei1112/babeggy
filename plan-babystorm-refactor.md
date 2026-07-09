@@ -82,15 +82,17 @@
 **目标**:FacilityService(1260 行)拆为 FacilityRegistry(~300 行)+ 五个 Interaction 子状态;修掉无主定时器 bug。
 
 **主要任务**:
-- [ ] 新建 `Domain/Interaction/InteractionBase.lua`:子状态契约(enter/exit/handle_event/set_intent 复用 StateBase 语义),生命周期严格嵌在 `InteractingFacilityState` 内
-- [ ] `SeatInteraction`(普通座位):FollowDriver + AnimationSystem.force_play(Seat)
-- [ ] `SwingInteraction`:Seat 基础上 + SwingPumpDriver + 碰撞开关
-- [ ] `VehicleInteraction`:kinematic 走 PatrolDriver + FollowDriver;physics 模式平移 `_drive_vehicle_physics`(Timer 化)
-- [ ] `PlayerBoundInteraction`(滑板):上/下板去抖用事件+确认定时器结构平移轮询逻辑;FollowDriver 跟随骑手
-- [ ] `CribInteraction`(壳):躺床姿势 + FollowDriver,换洗流程仍暂由 CribService 驱动(Phase 5 迁移)
-- [ ] `InteractingFacilityState` 重写:按 `facility_kind` 装载子状态;时长结算改 `Timer.once(owner=state)`——修掉 `:58` 无主定时器 bug;`action_lock` 由状态 enter/exit 管理,删除 `lock_ride_move_state/unlock_ride_move_state/hold_movement/cancel_movement_hold` 包装
-- [ ] FacilityService 瘦身为 `Services/FacilityRegistry.lua`:注册、`nearest_match`、`get_facilities_by_kind`、互动按钮配置、custom event 发送;木偶戏代码全部移出
-- [ ] 本阶段防御清扫:涉及文件按核心规则 7 执行
+- [x] 新建 `Domain/Interaction/InteractionBase.lua`:子状态契约(get_intent/enter/exit/handle_event/is_timed),生命周期严格嵌在 `InteractingFacilityState` 内;共享工具(坐姿跟随 spec/坐姿动画/碰撞开关)
+- [x] `SeatInteraction`(普通座位,兜底):FollowDriver + AnimationSystem.force_play("facility")
+- [x] `SwingInteraction`:Seat 基础上 + SwingPumpDriver + 碰撞开关 + 离座清座椅速度
+- [x] `VehicleInteraction`:kinematic 走 PatrolDriver + FollowDriver;physics 模式平移 `_drive_vehicle_physics`(Timer.every 化,owner=interaction)
+- [x] `PlayerBoundInteraction`(滑板):轮询降到 0.1s + 确认时长去抖(0.2s 上板/0.3s 下板,原 60Hz tick 计数换算);上板后 FollowDriver 跟随骑手(位置参考玩家、朝向参考板本体)
+- [x] `CribInteraction`(壳):躺床姿势 + FollowDriver,换洗流程仍暂由 CribService 驱动(Phase 5 迁移)
+- [x] (计划外新增)`CatapultInteraction`:投石车骑臂等发射;CatapultLaunchService 发射改经 `agent:handle_event({type="catapult_launch"})` 通知停跟随(不再戳 seat_token),延迟定时器改 Timer.once(owner=service)
+- [x] `InteractingFacilityState` 重写:按 `facility_kind` 装载子状态;时长结算改 `Timer.once(owner=state)`——修掉 `:58` 无主定时器 bug;`action_lock` 由状态 set_intent/exit 管理;**exit 统一收尾**(子状态 exit→释放占用→发 end 事件),Satisfied/Upset/Cry 切换自动触发;新增 `BabyAgent:handle_event` 事件转发入口
+- [x] 删除 `lock_ride_move_state/unlock_ride_move_state`(调用方已归零);**保留** `hold_movement/cancel_movement_hold`——它们是放下冻结(reason "hold")的入口,只被 BabyAgent 自己调用,与骑乘锁无关(Phase 6 再议是否内联)
+- [x] FacilityService(1273 行)瘦身为 `Services/FacilityRegistry.lua`(~280 行):注册、`nearest_match`、`get_facilities_by_kind`、互动按钮配置、`send_interaction_event`、宝宝判定;木偶戏代码全部移出;`set_trigger_registry`/`set_crib_service`/`is_crib`/`is_player_bound`/`is_catapult`/`end_interaction` 等无人使用的接口删除
+- [x] 本阶段防御清扫:Interaction/Registry/CatapultLaunchService 内方法存在性检查全删,pcall 仅剩既有豁免(装备可能已销毁、destroy 兜底);CryState 的设施收尾防御块删除(exit 统一收尾接管)
 
 **验收标准**:
 - WHEN 宝宝中途被抱走再放到另一设施,THEN 旧设施定时器不再触发完成结算
@@ -165,7 +167,7 @@
 |-------|------|------|------|
 | 1 | 地基(Timer/Rand/MathX/Drivers) | 🔄 代码完成,冒烟通过,待人工试玩验收 | 无 |
 | 2 | System 事件化 | 🔄 代码完成,冒烟通过(2026-07-08 零报错),待人工试玩验收 | Phase 1 |
-| 3 | 设施交互立体化 | ⬜ 未开始 | Phase 2 |
+| 3 | 设施交互立体化 | 🔄 代码完成(2026-07-09),待试玩验收 | Phase 2 |
 | 4 | 小游戏状态化(RPS→BallRally) | ⬜ 未开始 | Phase 3 |
 | 5 | Crib 拆分 | ⬜ 未开始 | Phase 3 |
 | 6 | 大扫除 + 规约更新 | ⬜ 未开始 | Phase 4、5 |

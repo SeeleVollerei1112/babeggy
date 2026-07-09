@@ -24,7 +24,7 @@ local Log = require("Util.Log")
 ---@field config BabyStormConfig
 ---@field crib_config BabyCribConfig
 ---@field triggers TriggerRegistry
----@field facility FacilityService|nil
+---@field facility FacilityRegistry|nil
 ---@field cabinet_pos Vector3|nil
 ---@field started boolean
 local CribService = Class("CribService")
@@ -67,7 +67,7 @@ function CribService:Ctor(config, triggers)
     self._poll_accum = 0.0
 end
 
----@param facility FacilityService
+---@param facility FacilityRegistry
 function CribService:set_facility_service(facility)
     self.facility = facility
 end
@@ -204,7 +204,7 @@ function CribService:_sub_by_key(key)
 end
 
 -- ============================================================
--- 会话：躺床后开始 / 结束（由 FacilityService 调用）
+-- 会话：躺床后开始 / 结束（由 CribInteraction 子状态调用）
 -- ============================================================
 
 ---@param agent BabyAgent

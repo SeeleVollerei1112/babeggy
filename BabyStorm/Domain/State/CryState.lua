@@ -60,10 +60,8 @@ function CryState:enter(context)
     agent.pickup_target = nil
     agent.is_rejecting = false
 
-    if agent.active_facility then
-        agent.services.facility:end_interaction(agent, agent.active_facility)
-        agent.active_facility = nil
-    end
+    -- 若从设施交互切入：InteractingFacilityState:exit 已在状态切换时统一收尾（停驱动、
+    -- 释放占用、发 end 事件），这里无需再碰设施。
 
     -- 哭闹期间仍可被抱起（补救）。
     agent:set_lift_enabled(true)
