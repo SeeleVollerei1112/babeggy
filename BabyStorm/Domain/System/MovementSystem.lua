@@ -223,8 +223,8 @@ end
 -- stop_move 外，perform 内部一律先 start_ai 再发指令，调用方不必自己开 AI。
 -- ============================================================
 
----@param action "release_lift"|"jump"|"directional_move"|"stop_move"
----@param args { dir: Vector3, duration: Fixed }|nil directional_move 必填
+---@param action "release_lift"|"jump"|"directional_move"|"stop_move"|"face_target"|"clear_face_target"
+---@param args { dir: Vector3, duration: Fixed, unit: Unit|LifeEntity }|nil directional_move / face_target 必填
 function MovementSystem:perform(action, args)
     local unit = self._agent.unit
     if not unit then
@@ -233,6 +233,17 @@ function MovementSystem:perform(action, args)
     if action == "stop_move" then
         -- 停步不开 AI（开 AI 反而可能让引擎接管走位）。
         unit.ai_command_stop_move(0.1)
+        return
+    end
+    -- 面向锁定不依赖 AI 开关（锁定期也能转头看玩家，历史 RPS 配对行为）。
+    if action == "face_target" then
+        if args and args.unit then
+            unit.start_face_lock_target(args.unit)
+        end
+        return
+    end
+    if action == "clear_face_target" then
+        unit.stop_face_lock_target()
         return
     end
     unit.start_ai()

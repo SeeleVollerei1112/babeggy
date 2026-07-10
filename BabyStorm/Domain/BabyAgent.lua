@@ -185,11 +185,6 @@ function BabyAgent:set_status(text)
     self.view_model:set_status_text(text or "")
 end
 
----@param value boolean
-function BabyAgent:set_busy(value)
-    self.view_model:set_busy(value)
-end
-
 ---@param enabled boolean
 function BabyAgent:set_lift_enabled(enabled)
     if self.unit and self.unit.set_lifted_enabled then
@@ -393,6 +388,10 @@ function BabyAgent:_new_state(state_id)
         cls = require("BabyStorm.Domain.State.UpsetState")
     elseif state_id == Enum.BabyState.Cry then
         cls = require("BabyStorm.Domain.State.CryState")
+    elseif state_id == Enum.BabyState.PlayRps then
+        cls = require("BabyStorm.Domain.Minigame.PlayRpsState")
+    elseif state_id == Enum.BabyState.BallRally then
+        cls = require("BabyStorm.Domain.Minigame.BallRallyState")
     else
         cls = require("BabyStorm.Domain.State.StateBase")
     end
@@ -462,10 +461,6 @@ function BabyAgent:on_lifted_begin(data)
         end
         self:set_lift_enabled(true)
         self.services.task:emit_lift_baby(self)
-        return
-    end
-
-    if self.view_model:is_busy() then
         return
     end
 
@@ -623,7 +618,6 @@ function BabyAgent:reject_wrong_item(item)
     self.pending_purpose = nil
     self.pickup_target = nil
 
-    self:set_busy(true)
     self:set_lift_enabled(false)
     -- 拿在手上看一会儿，期间不再走动（直接压意图为 Stop，仍处于 SeekingItem 状态内）。
     self.move_mode = Intent.MoveMode.Stop
@@ -709,9 +703,9 @@ function BabyAgent:finish_satisfied(item)
     self:enter_idle()
 end
 
--- 顶球玩法结束结算（由 BallRallyService 在玩家漏接、会话收尾时调用）。
+-- 顶球玩法结束结算（由 BallRallyState 在玩家漏接、会话收尾时调用）。
 -- 一律算作满足该需求：基础满足分 + 按成功顶球次数追加奖励（接的越多分越多），
--- 随后走一遍开心表现并推进到下一个需求。调用前 BallRallyService 已解除接管锁。
+-- 随后走一遍开心表现并推进到下一个需求。调用前 BallRallyState:exit 已释放 action_lock。
 ---@param role Role|nil
 ---@param catches integer
 function BabyAgent:finish_ball_rally(role, catches)

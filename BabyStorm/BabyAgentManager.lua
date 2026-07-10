@@ -9,8 +9,8 @@ local ScoreService = require("BabyStorm.Services.ScoreService")
 local TaskEventService = require("BabyStorm.Services.TaskEventService")
 local DifficultyService = require("BabyStorm.Services.DifficultyService")
 local RoundService = require("BabyStorm.Services.RoundService")
-local BallRallyService = require("BabyStorm.Services.BallRallyService")
-local RpsService = require("BabyStorm.Services.RpsService")
+local BallRallyCoordinator = require("BabyStorm.Coordinators.BallRallyCoordinator")
+local RpsCoordinator = require("BabyStorm.Coordinators.RpsCoordinator")
 local CribService = require("BabyStorm.Services.CribService")
 local CatapultLaunchService = require("BabyStorm.Services.CatapultLaunchService")
 local BabySceneView = require("BabyStorm.View.BabySceneView")
@@ -30,8 +30,8 @@ local Log = require("Util.Log")
 ---@field task TaskEventService
 ---@field difficulty DifficultyService
 ---@field round RoundService
----@field ball_rally BallRallyService
----@field rps RpsService
+---@field ball_rally BallRallyCoordinator
+---@field rps RpsCoordinator
 ---@field crib CribService
 ---@field catapult CatapultLaunchService
 ---@field view BabySceneView
@@ -105,8 +105,8 @@ function BabyAgentManager:start()
     local task = TaskEventService.New()
     local difficulty = DifficultyService.New(self.config, game_view_model)
     local round = RoundService.New(self.config, self.triggers, sessions, game_view_model)
-    local ball_rally = BallRallyService.New(self.config, self.triggers, sessions)
-    local rps = RpsService.New(self.config, self.triggers)
+    local ball_rally = BallRallyCoordinator.New(self.config, self.triggers, sessions)
+    local rps = RpsCoordinator.New(self.config, self.triggers)
     local crib = CribService.New(self.config, self.triggers)
     local catapult = CatapultLaunchService.New(self.config, self.triggers)
     -- crib 通过 facility 注册表拿到所有床记录来绑场景 UI、读歪床状态；
@@ -180,12 +180,6 @@ function BabyAgentManager:_tick(token)
         end
     end
 
-    if self.services and self.services.ball_rally then
-        self.services.ball_rally:update(TICK_DT)
-    end
-    if self.services and self.services.rps then
-        self.services.rps:update(TICK_DT)
-    end
     if self.services and self.services.crib then
         self.services.crib:update(TICK_DT)
     end

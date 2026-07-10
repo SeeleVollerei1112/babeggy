@@ -18,7 +18,6 @@ function UpsetState:enter(context)
     local agent = self.agent
     local wrong_item = context and context.item or nil
 
-    agent:set_busy(true)
     self:set_intent({
         move_mode = Intent.MoveMode.Stop,
         anim_base = Intent.AnimBase.Idle,

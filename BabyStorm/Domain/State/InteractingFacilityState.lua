@@ -81,7 +81,6 @@ function InteractingFacilityState:enter(context)
         return
     end
 
-    agent:set_busy(true)
     agent:set_lift_enabled(false)
     agent:set_status(agent.services.resolver:get_match_text(agent.current_need, facility))
     agent.services.task:emit_delivery(agent, facility, context and context.delivery_method or nil)

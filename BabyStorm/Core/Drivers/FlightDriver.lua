@@ -4,7 +4,7 @@ local MathX = require("Util.MathX")
 
 -- 运动学飞行驱动:把单位每步平滑钉到参数化轨迹上,合并两处历史实现——
 --   * BallRallyService._begin_kinematic_flight/_drive_ball_kinematic(抛物弧线,ease_out_in)
---   * RpsService._prepare_die/_drive_toss(纯垂直上抛,ease_out)
+--   * PlayRpsState._toss_die(纯垂直上抛,ease_out)
 --
 -- 只管位移,不管物理:重力/速度清零、物理开关等归 Prop/调用方,
 -- 驱动期间调用方须先自行关闭引擎重力(否则引擎积分会把单位甩离轨道)。

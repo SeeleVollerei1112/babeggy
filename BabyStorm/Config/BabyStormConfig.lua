@@ -249,7 +249,7 @@ Config.ball_rally = {
     floor_y = 2.384,
     ball_ground_origin_offset = 0.45,
 
-    -- 运动学参数化弧线（见 BallRallyService._drive_ball_kinematic）：弧高与时长解耦。
+    -- 运动学参数化弧线（见 BallRallyState._begin_flight + Core/Drivers/FlightDriver）：弧高与时长解耦。
     -- 弧高随本次水平投掷距离自动缩放（远→高、近→低，避免“飞很远却很平”或“近距离高高抛起”的违和）：
     --   peak = clamp(arc_height_ratio * 水平距离, arc_peak_min, arc_peak_max)。
     arc_height_ratio = 0.3,
@@ -425,7 +425,7 @@ Config.scoring = {
     ball_catch_score = 5,
     -- 猜拳玩法额外加分：双方一起跑完配对+抛骰+顶撞并落地判出胜负后，按“玩家视角”的输赢分档追加
     -- （基础满足分另算）。玩家未响应的独自满足、或骰子没干净落面无法判胜负时，都只给基础满足分、
-    -- 不追加这份分（见 BabyAgent:finish_rps / RpsService:_finish_settle / _finish_solo_satisfy）。
+    -- 不追加这份分（见 BabyAgent:finish_rps / PlayRpsState:_finish_settle / _finish_solo_satisfy）。
     rps_win_score = 8,  -- 玩家赢宝宝：满额加分
     rps_draw_score = 4, -- 平局：一半
     rps_lose_score = 0, -- 玩家输：不加分
@@ -472,7 +472,7 @@ Config.needs = {
         satisfied_text = "吃到蛋糕了",
     },
     {
-        -- 顶球玩法需求：由 BallRallyService 扫描接管（宝宝持此需求且场上有可用沙滩球即开局）。
+        -- 顶球玩法需求：由 BallRallyCoordinator 扫描配对（宝宝持此需求且场上有可用沙滩球即开局）。
         -- resolver = "ball_rally" 不走物品/设施解析：宝宝既不会去捡、玩家也不用抱去设施，
         -- 只是挂着倒计时等待顶球开局；接不到即结束并按 satisfy_score + 顶球次数 计分。
         id = "beach_ball",

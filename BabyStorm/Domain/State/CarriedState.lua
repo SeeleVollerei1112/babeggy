@@ -15,7 +15,6 @@ end
 function CarriedState:enter(context)
     CarriedState.super.enter(self, context)
     local agent = self.agent
-    agent:set_busy(true)
     agent.last_lift_unit = context and context.lift_unit or nil
     agent.last_role = context and context.role or nil
     agent:show_current_need()

@@ -107,13 +107,13 @@
 **目标**:两个千行服务改写为行为状态 + 薄 Coordinator + 道具能力;`set_busy` 具备删除条件。
 
 **主要任务**:
-- [ ] 新建 `Domain/Minigame/PlayRpsState.lua`(一级状态):WaitPlayer/Ready/Tossing/Settling/GivingUp 为内部 phase;事件驱动(骰子举放事件 + 确认/超时 Timer),Tossing 用 FlightDriver,Settling 用低频传感 Timer + 顶撞一次性 Timer 链,GivingUp 用 Wander{anchor} 意图
-- [ ] 新建 `Services/Props/DiceProp.lua`:骰子配置(lifted/thrown force)、事件订阅与转发、`read_gesture`、`restore_physics`;胜负判定表(BEATS)随之迁入
-- [ ] 新建 `Coordinators/RpsCoordinator.lua`(~100 行):0.5s 扫描配对(经 NeedResolver 类型查表)、仲裁、`agent:enter_state(PlayRps, context)`;删除 `RpsService`
-- [ ] 同法改写 BallRally:`BallRallyState` + `BallProp` + `BallRallyCoordinator`;落点标记/提示留在状态内经 Role 接口;修或记录 `_first_player` 多人问题(至少:提示与跳跃窗口对"最近玩家"生效)
-- [ ] `enter_state` 增加 PlayRps/BallRally 映射;需求匹配统一走 resolver 类型 → 状态查表
-- [ ] 删除 `BabyAgent.set_busy` 及 `view_model:is_busy` 分支(状态机不再需要被压制)
-- [ ] 本阶段防御清扫
+- [x] 新建 `Domain/Minigame/PlayRpsState.lua`(一级状态):wait_player/ready/tossing/settling/giving_up/finishing 为内部 phase;骰子举放事件经 DiceProp→Coordinator→`agent:handle_event` 转发,等待超时/顶撞链/放弃时长走 `Timer.once(owner=state)`,Settling 传感 `Timer.every(0.1)`;Tossing 用两个 FlightDriver(ease="out" 垂直上抛);面向锁定经 `MovementSystem.perform("face_target"/"clear_face_target")`(新增)
+- [x] 新建 `Services/Props/DiceProp.lua`:骰子配置(lifted/thrown force 归零)、事件订阅与转发(listener 模式)、`read_gesture`(AXIS_GESTURE 标定逐行平移)、`freeze_for_toss/restore_physics`;胜负判定表(BEATS)迁入 `judge_outcome`
+- [x] 新建 `Coordinators/RpsCoordinator.lua`(~90 行):0.5s Timer 扫描配对、单会话仲裁、`agent:enter_state(PlayRps, context)`;删除 `RpsService`
+- [x] 同法改写 BallRally:`BallRallyState` + `BallProp` + `BallRallyCoordinator`;落点标记 sfx/提示留在状态内经 Role 接口;**已修** `_first_player` 多人问题:开局选"离球最近的玩家"为搭档,跳跃事件对启动时所有玩家注册(遗留:中途加入的玩家未注册跳跃事件,Phase 6 处理);松手确认 = LIFTED_END 事件 + 两段 release_timeout 兜底(幂等 phase 守卫)
+- [x] `enter_state` 增加 PlayRps=8/BallRally=9 映射(BabyStormEnum + BabyAgent._new_state)
+- [x] 删除 `BabyAgent.set_busy`、`view_model` Busy 字段及全部 `is_busy` 分支(on_lifted_begin 守卫、IdleState 扫描守卫;各状态 set_busy 调用一并移除——lift 门控本就由 set_lift_enabled 承担)
+- [x] 本阶段防御清扫:新文件方法存在性检查零出现;pcall 仅留"可能已销毁单位"(骰子/球可被打飞出界销毁、玩家断线)、sfx 表现兜底、destroy 兜底三类,均带理由注释
 
 **验收标准**:
 - WHEN 猜拳/顶球进行中,THEN `agent.active_state` 为对应状态,意图四字段真实反映当前行为
@@ -168,7 +168,7 @@
 | 1 | 地基(Timer/Rand/MathX/Drivers) | 🔄 代码完成,冒烟通过,待人工试玩验收 | 无 |
 | 2 | System 事件化 | 🔄 代码完成,冒烟通过(2026-07-08 零报错),待人工试玩验收 | Phase 1 |
 | 3 | 设施交互立体化 | 🔄 代码完成(2026-07-09),待试玩验收 | Phase 2 |
-| 4 | 小游戏状态化(RPS→BallRally) | ⬜ 未开始 | Phase 3 |
+| 4 | 小游戏状态化(RPS→BallRally) | 🔄 代码完成(2026-07-10),待试玩验收 | Phase 3 |
 | 5 | Crib 拆分 | ⬜ 未开始 | Phase 3 |
 | 6 | 大扫除 + 规约更新 | ⬜ 未开始 | Phase 4、5 |
 

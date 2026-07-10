@@ -17,7 +17,6 @@ end
 function IdleState:enter(context)
     IdleState.super.enter(self, context)
     local agent = self.agent
-    agent:set_busy(false)
     agent:set_lift_enabled(true)
     agent:show_current_need()
     self._scan_elapsed = 0.0
@@ -33,10 +32,7 @@ end
 function IdleState:update(dt)
     local agent = self.agent
     -- 就近扫描：玩家把可拾取物件放到宝宝身边时，宝宝据此自己去捡。
-    -- 只在不忙时反应、只认地面物品（设施需玩家抱送）。
-    if agent.view_model:is_busy() then
-        return
-    end
+    -- 只认地面物品（设施需玩家抱送）。
     self._scan_elapsed = self._scan_elapsed + dt
     if self._scan_elapsed < agent.config.baby.item_scan_interval then
         return

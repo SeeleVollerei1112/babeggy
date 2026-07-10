@@ -11,7 +11,6 @@ BabyViewModel.Field = {
     StatusText = "StatusText",
     NeedId = "NeedId",
     NeedText = "NeedText",
-    Busy = "Busy",
     Stress = "Stress",
 }
 
@@ -23,7 +22,6 @@ function BabyViewModel:Ctor()
     self:set_property_silently(field.StatusText, "")
     self:set_property_silently(field.NeedId, "")
     self:set_property_silently(field.NeedText, "")
-    self:set_property_silently(field.Busy, false)
     self:set_property_silently(field.Stress, 0)
 end
 
@@ -72,17 +70,6 @@ end
 ---@return string
 function BabyViewModel:get_need_text()
     return self:get_property(self.Field.NeedText)
-end
-
----@param value boolean
----@return boolean
-function BabyViewModel:set_busy(value)
-    return self:set_property(self.Field.Busy, value and true or false)
-end
-
----@return boolean
-function BabyViewModel:is_busy()
-    return self:get_property(self.Field.Busy)
 end
 
 ---@param delta integer|nil

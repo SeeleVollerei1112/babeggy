@@ -19,6 +19,8 @@ Enum.BabyState = {
     Upset = 5,
     InteractingFacility = 6,
     Cry = 7, -- 需求超时哭闹（原 Timeout，按「行为状态描述目的」重命名）
+    PlayRps = 8,    -- 猜拳小游戏（配对→抛骰→顶撞→判分，由 RpsCoordinator 触发）
+    BallRally = 9,  -- 顶球小游戏（发球→玩家顶回→回合循环，由 BallRallyCoordinator 触发）
 }
 
 ---@type table<integer, string>
@@ -30,6 +32,8 @@ Enum.StateName = {
     [Enum.BabyState.Upset] = "Upset",
     [Enum.BabyState.InteractingFacility] = "InteractingFacility",
     [Enum.BabyState.Cry] = "Cry",
+    [Enum.BabyState.PlayRps] = "PlayRps",
+    [Enum.BabyState.BallRally] = "BallRally",
 }
 
 ---@param state_id integer

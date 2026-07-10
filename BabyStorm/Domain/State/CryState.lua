@@ -53,7 +53,6 @@ function CryState:enter(context)
     CryState.super.enter(self, context)
     local agent = self.agent
 
-    agent:set_busy(true)
     agent.view_model:add_stress(1)
     agent.pending_item = nil
     agent.pending_purpose = nil

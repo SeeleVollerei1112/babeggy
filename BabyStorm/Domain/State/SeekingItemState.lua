@@ -27,7 +27,6 @@ function SeekingItemState:enter(context)
         return
     end
 
-    agent:set_busy(true)
     agent:set_lift_enabled(false)
     agent.pending_item = item
     agent.pickup_target = item

@@ -20,7 +20,6 @@ function SatisfiedState:enter(context)
     local facility = context and context.facility or nil
     local target = item or facility
     agent:cancel_need_countdown()
-    agent:set_busy(true)
     agent:set_lift_enabled(false)
     agent:select_equipped_slot()
     self:set_intent({
