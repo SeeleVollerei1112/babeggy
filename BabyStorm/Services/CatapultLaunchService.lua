@@ -103,7 +103,7 @@ function CatapultLaunchService:_probe_landing_touch(unit_id)
     end)
 end
 
--- 把发射按钮画布贴到投石车组件上（照 CribService 贴柜子UI 的做法），让玩家看得到按钮。
+-- 把发射按钮画布贴到投石车组件上（照 CribCareView 贴柜子UI 的做法），让玩家看得到按钮。
 function CatapultLaunchService:_bind_button_canvas()
     local layer_key = Prefab.scene_eui and Prefab.scene_eui.character_catapult_canvas
     if not layer_key then
@@ -225,11 +225,6 @@ function CatapultLaunchService:_abort(reason)
     end
     self.active = nil
     Log.info("catapult launch aborted", reason)
-end
-
----@param _dt Fixed
-function CatapultLaunchService:update(_dt)
-    -- 需求驱动版为事件驱动，暂无每帧逻辑；保留接口便于后续加飞行超时兜底。
 end
 
 function CatapultLaunchService:destroy()

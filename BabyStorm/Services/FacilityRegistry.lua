@@ -15,7 +15,7 @@ local Log = require("Util.Log")
 ---@field contact_area Unit|nil
 ---@field active_agent BabyAgent|nil      -- 占用者，由 InteractingFacilityState enter/exit 写
 ---@field orient_unit Unit|nil            -- 坐姿朝向源（投石车投臂），由 CatapultInteraction 解析缓存
----@field crib_session CribCareSession|nil -- 以下 crib_* 字段由 CribService 拥有（Phase 5 迁移）
+---@field crib_session CribCareSession|nil -- CribCareSession 定义见 CribInteraction.lua；以下 crib_* 字段由 CribInteraction/CribCoordinator 拥有
 ---@field crib_tilted boolean|nil
 ---@field crib_reset_progress number|nil
 ---@field crib_reset_pressing any
@@ -141,7 +141,7 @@ function FacilityRegistry:_configure_facility_unit(unit, need)
     end
 
     -- 载具/秋千座椅/婴儿床/投石车不挂玩家互动按钮：交互由“玩家把宝宝抱来放下”触发，避免玩家自己按键。
-    -- 婴儿床的取物/换洗/扶正都走 CribService 的场景 UI，同样不需要单位自带的互动按钮。
+    -- 婴儿床的取物/换洗/扶正都走 CribCoordinator/CribCareView 的场景 UI，同样不需要单位自带的互动按钮。
     if need.facility_kind == "vehicle" or need.facility_kind == "swing_seat"
         or need.facility_kind == "crib" or need.facility_kind == "catapult" then
         return

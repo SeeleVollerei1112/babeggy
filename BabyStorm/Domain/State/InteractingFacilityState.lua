@@ -109,6 +109,13 @@ function InteractingFacilityState:enter(context)
     end
 end
 
+---@param dt Fixed
+function InteractingFacilityState:update(dt)
+    if self._sub then
+        self._sub:update(dt)
+    end
+end
+
 ---@param event table
 function InteractingFacilityState:handle_event(event)
     if self._sub then

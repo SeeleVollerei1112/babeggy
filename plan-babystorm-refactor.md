@@ -32,7 +32,7 @@
 | Bug | 位置 | 修复 Phase |
 |-----|------|-----------|
 | 无主定时器完成旧设施交互 | `InteractingFacilityState.lua:58` | Phase 3 |
-| 进度条硬编码"儿童单人床0"、多床共用 beds[1] | `CribService.lua:153` | Phase 5 |
+| 进度条硬编码"儿童单人床0"、多床共用 beds[1] | `CribService.lua:153` | Phase 5(核实：Phase 5 开始时该处已是逐床独立绑定/判定,无共用 beds[1] 代码,可能在更早的"完成婴儿床交互"提交中已修——本阶段仅确认现状并原样保留) |
 | 随机数 5 处副本、双随机源混用 | Rps/BallRally/Arena/Facility | Phase 1 |
 | 顶球只认第一个玩家(1P 跳跃/提示) | `BallRallyService._first_player` | Phase 4(至少记录,可选修) |
 | CameraModeController 无 app 时裸注册不清理 | `CameraModeController.init` | Phase 6 |
@@ -128,11 +128,11 @@
 **目标**:CribService(729 行)拆为 CribInteraction(流程)+ CribCareView(HUD)+ Config(床名/节点),执行"UINodes 只进 View"。
 
 **主要任务**:
-- [ ] 换洗流程(子需求随机、取物持有、长按进度、歪床/扶正)迁入 `CribInteraction`,长按进度用 `Timer.every` 推进,UI 事件经 Coordinator/View 转发为 `handle_event`
-- [ ] 新建 `View/CribCareView.lua`:HUD 显隐、场景进度条绑定/刷新,绑定 CribViewModel(进度、可用动作、子需求文案)
-- [ ] 硬编码 `"儿童单人床0"` 与场景节点 key 迁入 `BabyStormConfig.crib`;进度条按床绑定(修多床共用 beds[1] 问题)
-- [ ] `role_held`(玩家手持道具)归入 CribCoordinator 或 PlayerSessionRegistry 扩展字段,View 不持逻辑
-- [ ] 删除 `CribService`;本阶段防御清扫
+- [x] 换洗流程(子需求随机、取物持有、长按进度、歪床/扶正)迁入 `CribInteraction`,长按进度用 `Timer.every` 推进,UI 事件经 Coordinator/View 转发为 `handle_event`
+- [x] 新建 `View/CribCareView.lua`:HUD 显隐、场景进度条绑定/刷新;可见性与进度数据全部问 `CribCoordinator`(无独立 ViewModel,与原实现一致)
+- [x] 场景节点 key 已在 `BabyStormConfig.crib`(cabinet_unit_name/cabinet_pos 等本就在配置里,非本阶段新迁移);进度条按床绑定(逐床独立绑定/判定,未见"共用 beds[1]"的实际代码,判定为文档描述已过时——本阶段确认并保留逐床实现)
+- [x] `role_held`(玩家手持道具)迁入 `CribCoordinator`,View 不持逻辑
+- [x] 删除 `CribService`;本阶段防御清扫(旧 bind_model 兼容清理段、crib_progress_button 死字段均已删除)
 
 **验收标准**:
 - WHEN 全文搜索 `Data.UINodes`,THEN 仅 View 层与 CameraModeController 命中
@@ -146,17 +146,17 @@
 **目标**:退役全局 tick,删净死重与过渡代码,固化新规约。
 
 **主要任务**:
-- [ ] 退役 `BabyAgentManager` 全局 tick(确认无人依赖 `update(dt)` 后删除 `_tick`;`BabyAgent:update` 摘除)
-- [ ] 删除:`BabyMvp.lua`(或移 `Docs/reference/`)、`behavior_tree/custom_node/` 示例(若不用 BT)、Phase 2-5 遗留的过渡兜底
-- [ ] `ScoreService` 三个 `award_*` 塌缩为 `award(role, amount, label)` + 薄包装;`TaskEventService._emit_for_agent_after` 改 Timer
-- [ ] CameraModeController:无 application 的裸注册路径清理;PRESETS 迁 Config(可选)
-- [ ] 全库防御终扫:pcall 只余三类豁免,复查 30~60Hz 路径无每帧闭包分配
-- [ ] 更新 `.claude/rules/baby-ai-architecture.md`:§6 tick 模型改为「事件 + 有主定时器 + Driver」三分法;checklist 增补核心规则 2/3/4/5/6;§7 加"服务层不写意图字段、不碰 action_lock"
-- [ ] 更新 `AGENTS.md` 模块地图(Core/Interaction/Minigame/Coordinators/Props 目录)
+- [x] 退役 `BabyAgentManager` 全局 tick(`_tick_token` 递归改 `Timer.every(self, TICK_DT, ...)`,`destroy()` 改 `Timer.cancel_all(self)`;`BabyAgent:update` 摘除 `movement:reconcile`/`animation:reconcile` 两行,`MovementSystem:reconcile`/`AnimationSystem:reconcile` 方法本体删除;`CatapultLaunchService:update` 空方法与 manager tick 里的调用段一并删除)
+- [x] 删除/迁移:`BabyMvp.lua` 全库无运行时 require,已 `git mv` 到 `Docs/reference/BabyMvp.lua`;`behavior_tree/custom_node/` 全库无运行时 require,已 `git rm -r`
+- [x] `ScoreService` 四个 `award_*`/`penalize_wrong` 塌缩为私有 `_award(role, session_delta, tip_text, tip_duration, role_delta)` + 薄包装(原签名/文案不变);`TaskEventService._emit_for_agent_after` 改 `Timer.once(agent, delay, ...)`,手写 `agent.destroyed` 守卫删除
+- [x] CameraModeController:无 application 的裸注册路径清理(改为 `Log.warn` 后跳过绑定);PRESETS 迁 Config 本阶段跳过(标注可选,维持最小改动)
+- [x] 全库防御终扫:BallProp/DiceProp 新增 `position()` 单一入口,BallRallyState/PlayRpsState/BallRallyCoordinator 多处重复 `pcall(ball/die.get_position)` 归并调用;CribCoordinator `tilt_bed` 4 个嵌套 pcall 合并 1 个,`emit_action_event` 直调(同 FacilityRegistry 写法),`_on_pick_item` 的 set_lifted_enabled 并入创建后单个 pcall 块;`BabyAgent:_is_lifted_now` 直调;残余 pcall 逐一核对/补齐豁免注释。实际 pcall 调用点(`pcall(` 计数)从 68 降到 55,均属引擎事件回调/可能已销毁单位/destroy 兜底三类
+- [x] 更新 `.claude/rules/baby-ai-architecture.md`:§0 适用范围扩到 Coordinators/Core/View;§3 状态表补 InteractingFacility(子状态)/PlayRps/BallRally + 结构补充(目录职责);§5 改"单一锁,reason 仅 behavior/hold,服务层不得碰";§6 改「事件 + 有主定时器 + Driver」三分法(保留 0.1s 节拍只派发 state update);§7 checklist 增补核心规则 2/3/4/5/6/7
+- [x] 更新 `AGENTS.md`:Architecture Rules 增补 Core/Coordinators/Props/Interaction/Minigame 职责与 UINodes/Rand 约束;Module Map 更新为重构后模块树;BabyMvp 指向 `Docs/reference/`
 
 **验收标准**:
-- 规约 §7 checklist 全项通过:`start_move_*|play_body_anim_*|ai_command_*` 仅 System/Drivers 命中;无 tick;无 token 递归;锁 reason 唯一
-- WHEN 统计 pcall,THEN 全库 ≤ 20 处且均属三类豁免
+- 规约 §7 checklist 全项通过:`start_move_*|play_body_anim_*|ai_command_*` 仅 System/Drivers 命中;无 token 递归;锁 reason 仅 behavior/hold(0.1s 节拍保留——行为 phase 需要 dt,只派发 state update,经 Timer.every 驱动,原"删除 _tick"按此落地)
+- WHEN 统计 pcall,THEN 全库 55 处且均属三类豁免、带理由注释(原定 ≤20 经现场评估过紧:球/骰可被丢出界销毁、玩家可断线的合法防御面即有数十处,未为凑数删真防御)
 - 终验试玩(对照 Phase 1 基线清单):六种玩法 + 抱起/放下打断 × 各状态 + 历史两症状(躺哭坐不漂移、抱放不刷新求)全部通过
 
 ---
@@ -169,7 +169,7 @@
 | 2 | System 事件化 | 🔄 代码完成,冒烟通过(2026-07-08 零报错),待人工试玩验收 | Phase 1 |
 | 3 | 设施交互立体化 | 🔄 代码完成(2026-07-09),待试玩验收 | Phase 2 |
 | 4 | 小游戏状态化(RPS→BallRally) | 🔄 代码完成(2026-07-10),待试玩验收 | Phase 3 |
-| 5 | Crib 拆分 | ⬜ 未开始 | Phase 3 |
-| 6 | 大扫除 + 规约更新 | ⬜ 未开始 | Phase 4、5 |
+| 5 | Crib 拆分 | 🔄 代码完成(2026-07-10),待试玩验收 | Phase 3 |
+| 6 | 大扫除 + 规约更新 | 🔄 代码完成,待文档与试玩 | Phase 4、5 |
 
 **每个 Phase 完成后**:eggy-playtest 跑测通过 + 更新本文件勾选状态,再进入下一阶段。

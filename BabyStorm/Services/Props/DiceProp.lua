@@ -109,6 +109,19 @@ function DiceProp:holder(index)
     return self.holders[index]
 end
 
+-- 某颗骰子当前位置：骰子可能在抛掷/顶撞中被打飞出界被引擎销毁，读取保留 pcall
+-- （PlayRpsState._dice_at_rest / _baby_bonk_dir 统一改调本方法）。
+---@param index integer
+---@return Vector3|nil
+function DiceProp:position(index)
+    local die = self.dice[index]
+    if not die then
+        return nil
+    end
+    local ok, pos = pcall(function() return die.get_position() end)
+    return ok and pos or nil
+end
+
 ---@return integer
 function DiceProp:count()
     return #self.dice
@@ -122,6 +135,7 @@ function DiceProp:is_held_by(unit, index)
     if not (unit and die) then
         return false
     end
+    -- unit 可能是断线玩家的单位，读取保留 pcall。
     local ok, held = pcall(function() return unit.get_lifted_obstacle() end)
     return ok and UnitUtil.same_unit(held, die) or false
 end

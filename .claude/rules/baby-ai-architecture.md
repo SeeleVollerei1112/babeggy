@@ -1,7 +1,7 @@
 # 宝宝 AI 架构规约（BabyStorm）
 
-> 本文件是 BabyStorm 模块 AI 重构的**验收标准**。所有改动以此为准；与此冲突的旧写法一律视为待修。
-> 适用范围：`BabyStorm/Domain/**`、`BabyStorm/Services/**` 中与宝宝个体行为相关的代码。
+> 本文件是 BabyStorm 模块 AI 架构的**验收标准**。所有改动以此为准；与此冲突的旧写法一律视为待修。
+> 适用范围：`BabyStorm/Domain/**`、`BabyStorm/Services/**`、`BabyStorm/Coordinators/**`、`BabyStorm/Core/**`、`BabyStorm/View/**` 中与宝宝个体行为相关的代码。
 
 ## 0. 一句话主旨
 
@@ -47,10 +47,12 @@
 |------|------|----------|
 | Idle | 空闲巡逻 + 扫描就近目标 + 展示需求倒计时 | 初始 / 满足后 / 放下无目标 |
 | Carried | 被玩家举着 | `on_lifted_begin` |
-| SeekItem | 走向并捡起目标物品（含 reject 分支） | 匹配到地面物品 |
-| DeliverToFacility | 在设施处交互（含玩家绑定等待） | 抱着放到设施处 |
-| Satisfied | 满足后的开心表现 + 结算事件 | 捡到对的物品 / 设施完成 |
-| Upset | 错误物品的不满表现 | reject 完成 / 捡取失败 |
+| SeekingItem | 走向并捡起目标物品（含 reject 分支） | 匹配到地面物品 |
+| InteractingFacility | 在设施处交互；按 `facility_kind` 装载 Interaction 子状态（Seat/Swing/Vehicle/PlayerBound/Catapult/Crib），子状态可持 Driver | 抱着放到设施处 |
+| PlayRps | 猜拳小游戏（配对→抛骰→顶撞→判分），内部 phase 推进 | RpsCoordinator 扫描配对 |
+| BallRally | 顶球小游戏（发球→顶回→回合循环），内部 phase 推进 | BallRallyCoordinator 扫描配对 |
+| Satisfied | 满足后的开心表现 + 结算事件 | 捡到对的物品 / 设施完成 / 小游戏收尾 |
+| Upset | 错误物品的不满表现 | reject 完成 / 捡取失败 / 交互被打断 |
 | Cry（原 Timeout） | 需求超时哭闹 + 补救窗口 + 概率拒绝抱起 | 需求倒计时归零 |
 
 ### MovementSystem（移动模式）
@@ -59,10 +61,19 @@
 ### AnimationSystem
 - `anim_base`：`Idle` / `Locomotion` / `Pickup` / `Cry` / `Happy` / `CarriedPose` / `Ride`。
 - `anim_overlay`：情绪叠加（疑惑/嫌弃/开心气泡等），与 base 解耦。
-- 动画**事件驱动**：用 `OnAnimFinished(name)` 推进，禁止"每秒重发同一个全身动作"的续命 hack（现 `_refresh_timeout_anim`）。若引擎确实会被待机顶掉，由 AnimationSystem 内部持有"持续播放"语义，而非散落在行为层。
+- 禁止**行为层**"每秒重发同一个全身动作"的续命 hack。引擎确实会用待机顶掉全身动作（`play_body_anim` 约 1s 后被顶），"持续播放"语义由 AnimationSystem 内部的续命 Timer 持有，对行为层透明；设施坐姿/骑行/躺床走 `force_play(param, reason)` 外部强制层（优先于意图层，`release(reason)` 配对退场）。
 
 ### Presentation
 沿用 `BabySceneView` + `BabyViewModel`（气泡）。情绪/状态文案只经 ViewModel 流出。
+场景 UI（婴儿床进度条/柜子）在 `View/CribCareView`——`Data.UINodes` 只允许 View 层与表现层控制器 require。
+
+### 结构补充（重构后落地的目录职责）
+- `Core/Timer`：唯一定时器入口（once/every/every_frame），owner 必填。
+- `Core/Drivers/*`：连续运动驱动（Flight/Follow/SwingPump/Patrol），start/stop 成对，只管位移不管物理开关。
+- `Domain/Interaction/*`：设施交互子状态，生命周期严格嵌在 `InteractingFacilityState` 内（get_intent/enter/update/handle_event/exit/is_timed）。
+- `Domain/Minigame/*`：小游戏一级行为状态（PlayRps / BallRally）。
+- `Coordinators/*`：薄协调器——扫描配对、引擎事件订阅与转发（转 `agent:handle_event`）、跨玩家资源（UI 路由/手持道具/床级歪扶）。不持流程状态、不写意图。
+- `Services/Props/*`：道具能力层（骰子/沙滩球）——道具引擎接口与物理开关的唯一入口，无行为决策。
 
 ## 4. 行为状态契约
 
@@ -86,34 +97,35 @@ Carried  = { move_mode = "Carried",      anim_base = "CarriedPose", anim_overlay
 
 有多步流程的状态用**内部 phase**推进（Start → WaitingAnimation → Finish），**不要靠关 AI 等动画**。
 
-## 5. ActionLock 规范（合并三套锁）
+## 5. ActionLock 规范（单一锁，reason 引用计数）
 
-现有 `timeout_move_locked` / `ride_move_locked` / `movement_hold_locked` 三套各带 token 的锁**合并为一个** `action_lock`（带 reason 便于调试）：
+全部移动锁统一为 `action_lock`。**reason 只允许两个**：`behavior`（行为状态经 `set_intent{ action_lock = true }` 声明，StateBase:exit 自动释放）与 `hold`（放下冻结，BabyAgent 内部）。服务 / Coordinator / Prop 一律不得 acquire/release。
 
-- 进入锁：`Stop movement` + 幂等地 `add_state(BUFF_FORBID_MOVE)`（计数型 buff，必须幂等，避免只移除一次后永久禁动）。
-- 解锁：幂等 `remove_state(BUFF_FORBID_MOVE)` + 恢复 move_speed。
-- `action_lock = true` 期间：当前状态保持、不切行为、不推进普通移动；只等 `ActionFinished` 或显式事件（抱起/放下/匹配到目标）。
-- 锁的生命周期跟随**当前行为状态**，状态 exit 必须解锁——不允许跨状态泄漏。
+- 进入锁：停移动 + 幂等地 `add_state(BUFF_FORBID_MOVE)`（计数型 buff，必须幂等，避免只移除一次后永久禁动）；边沿控制——只在"空集 → 非空"时加 buff。
+- 解锁：幂等 `remove_state(BUFF_FORBID_MOVE)` + 恢复 move_speed；只在"非空 → 空"时执行。
+- 锁定期间 MovementSystem 强制 Stop，不发任何移动指令；确需在锁定期发指令（松手/跳跃/顶撞走位）经 `MovementSystem:perform(action)`——它内部先开 AI 再发，规避「stop_ai 后 ai_command_* 静默失效」的引擎坑。
+- 锁的生命周期跟随**当前行为状态**，状态 exit 必须解锁（StateBase 统一做）——不允许跨状态泄漏。
 
-## 6. 每帧 Update 顺序
+## 6. 并发模型：事件 + 有主定时器 + Driver
 
-引入定频 tick（替代散落的 `call_delay_time + token`，计时器统一由 NeedSystem/状态 phase 持有）：
+禁止散落的 `call_delay_time + token 守卫` 惯用法。三分法：
 
-```
-1. NeedSystem:update(dt)          -- 倒计时、超时 → 产出需求事件
-2. BehaviorFSM:update(dt)         -- 按 phase 推进；输出 move_mode/anim_base/anim_overlay/action_lock
-3. MovementSystem:reconcile()     -- 唯一改位置处；action_lock 时强制 Stop
-4. AnimationSystem:reconcile()    -- 唯一播动画处
-5. Presentation                   -- ViewModel 已变更则刷新气泡
-```
+1. **事件优先**：引擎事件（举放/碰撞/UI）由 Coordinator / Prop 启动时订阅一次，转发 `agent:handle_event(ev)`，由当前状态决定后果——**事件只报时机，逻辑层决定结果**（是否满足需求/是否切状态/是否消耗物品）。
+2. **有主定时器**：一切延时/周期走 `Core/Timer`（once/every/every_frame），owner 必填；owner 销毁（`destroyed == true`）或 `Timer.cancel_all(owner)`（状态 exit 由 StateBase 统一做）即失效，回调无需 token 过期守卫。
+3. **Driver 隔离**：连续位移（跟随/巡游/飞行/泵力）由 `Core/Drivers` 承担，start/stop 成对，持有方 exit 必须 stop。
 
-事件（`on_lifted_begin/end`、`AnimFinished`、匹配到目标）走 `BehaviorFSM:handle_event(ev)`，由当前状态决定后果——**动画事件只报时机，逻辑层决定结果**（是否满足需求/是否切状态/是否消耗物品）。
+保留一个 0.1s 全局节拍（BabyAgentManager 经 `Timer.every` 驱动），**只派发** `active_state:update(dt)`——供确需 dt 累计的行为 phase 使用（扫描间隔、飞行传感、暂停/续跑型倒计时）。Movement/Animation 没有 tick 兜底：意图变更即 `invalidate()` 立即对齐，周期性动作（巡逻换点、动画续命）由各系统内部挂 Timer。
 
 ## 7. 验收 Checklist
 
-- [ ] 全文搜索：行为状态/Need 层内无 `start_move_*` / `play_body_anim_*` / `ai_command_*` 直接调用。
-- [ ] 三套移动锁已合并为单一 `action_lock`，且每个 exit 都解锁。
-- [ ] 每个行为状态进入时四个意图字段全部赋值。
-- [ ] 不存在 `disable AI → anim → enable AI` 模式；不存在每秒重发同一全身动作的续命逻辑。
-- [ ] 非移动 `anim_base` 对应 `move_mode == "Stop"`。
+- [ ] `start_move_*` / `play_body_anim_*` / `ai_command_*` / `stop_ai|start_ai` 直调仅 MovementSystem / AnimationSystem / Core/Drivers 命中。
+- [ ] 服务 / Coordinator / Prop 层不写 `agent.move_mode` 等意图字段、不碰 `action_lock`。
+- [ ] 每个行为状态（含 Interaction 子状态的 `get_intent`）进入时四个意图字段全部赋值。
+- [ ] 非移动 `anim_base` 对应 `move_mode == "Stop"`（Driver 接管位移时用 `Scripted`）。
+- [ ] 不存在 `disable AI → anim → enable AI` 模式；不存在行为层的续命重发；不存在无主 `call_delay_time` 与 token 过期守卫。
+- [ ] 锁 reason 仅 `behavior` / `hold`；每个状态 exit 自动解锁（StateBase 统一做）。
+- [ ] 行为状态不直接订阅引擎事件；订阅在 Coordinator / Prop，经 `agent:handle_event` 转发。
+- [ ] `Data.UINodes` 仅 View 层与表现层控制器 require。
+- [ ] 随机数仅经 `Util/Rand` 一个入口、一个源（帧同步确定性）。
+- [ ] pcall 仅三类豁免且带理由注释：引擎事件回调最外层、可能已销毁单位（球/骰被丢出界、玩家断线）、destroy 兜底；方法存在性检查（`if x.foo then`）不作为防御手段。
 - [ ] 试玩验证历史两个症状消失：①躺/哭/坐时不再漂移；②抱起/放下不再触发需求刷新或倒计时归零。

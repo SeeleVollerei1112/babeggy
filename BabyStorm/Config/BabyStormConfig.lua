@@ -91,7 +91,9 @@ local Prefab = require("Data.Prefab")
 
 ---@class BabyCribConfig
 ---@field enabled boolean
+---@field cabinet_unit_name string|nil
 ---@field cabinet_pos Fixed[]
+---@field cabinet_ui_offset Fixed[]|nil
 ---@field cabinet_show_radius Fixed
 ---@field progress_show_radius Fixed
 ---@field poll_interval Fixed
@@ -556,7 +558,7 @@ Config.needs = {
     },
     {
         -- 婴儿床：玩家把宝宝抱到床上放下 → 躺姿(动作49)绑床 → 随机弹出「换尿布/擦屁股」子需求。
-        -- 玩家去尿布柜取对应道具、走到床边长按 progress_btn 换洗完成。整个玩法由 CribService 驱动，
+        -- 玩家去尿布柜取对应道具、走到床边长按 progress_btn 换洗完成。整个玩法由 CribInteraction 驱动，
         -- 这里只声明它是一条 crib 型设施需求（放下即触发、就近选空闲的一张床）。
         id = "crib_care",
         resolver = "facility",

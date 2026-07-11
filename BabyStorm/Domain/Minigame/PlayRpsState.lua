@@ -392,9 +392,9 @@ function PlayRpsState:_baby_bonk_dir(unit, randomize)
         return nil
     end
     -- 骰子可能已被打飞出界销毁：读不到位置按“就在头顶”处理（length=0，随机方向斜顶）。
-    local dok, die_pos = pcall(function() return self._prop:get(self._baby_die_index).get_position() end)
+    local die_pos = self._prop:position(self._baby_die_index)
     local dx, dz, length = 0.0, 0.0, 0.0
-    if dok and die_pos then
+    if die_pos then
         dx = die_pos.x - baby_pos.x
         dz = die_pos.z - baby_pos.z
         length = math.sqrt(dx * dx + dz * dz)
@@ -449,8 +449,8 @@ function PlayRpsState:_dice_at_rest()
         if speed_sq > eps * eps then
             return false
         end
-        local pok, pos = pcall(function() return die.get_position() end)
-        if not (pok and pos) then
+        local pos = prop:position(index)
+        if not pos then
             return false
         end
         local ground_y = self:_ground_y_under(arena, pos)
@@ -468,6 +468,7 @@ end
 ---@return Fixed
 function PlayRpsState:_ground_y_under(arena, pos)
     if arena and arena.ground_point then
+        -- 地面射线查询的兜底：查询失败就落回 floor_y，不阻塞落地判定。
         local ok, gp = pcall(function() return arena:ground_point(pos) end)
         if ok and gp and gp.y and gp.y ~= pos.y then
             return gp.y

@@ -135,8 +135,8 @@ end
 -- ============================================================
 
 function BallRallyState:_request_throw()
-    local ok, ball_pos = pcall(function() return self._ball.get_position() end)
-    if not (ok and ball_pos) then
+    local ball_pos = self._prop:position(self._ball)
+    if not ball_pos then
         self:_settle("球丢失了")
         return
     end
@@ -164,6 +164,7 @@ function BallRallyState:_release_retry()
         return -- 已经被 ball_lift_end 事件推进，幂等跳过
     end
     if not self._prop:is_free(self._ball) then
+        -- 球可能已被打飞出界销毁，保留 pcall。
         pcall(function() self.agent.unit.lift_unit(self._ball) end)
         Timer.once(self, self.cfg.release_timeout, function() self:_launch_to_player() end)
     else
@@ -179,8 +180,8 @@ function BallRallyState:_launch_to_player()
     if self.phase ~= "wait_release" then
         return -- 事件与定时器兜底可能重复触发，幂等跳过
     end
-    local ok, start = pcall(function() return self._ball.get_position() end)
-    if not (ok and start and self._target) then
+    local start = self._prop:position(self._ball)
+    if not (start and self._target) then
         self:_settle("发球失败")
         return
     end
@@ -221,8 +222,8 @@ function BallRallyState:_update_to_player(dt)
     end
 
     -- 球已落到地面仍未顶到，或超过宽限时间 → 玩家漏接 → 本局结束（算满足，按已顶次数计分）。
-    local ok, ball_pos = pcall(function() return self._ball.get_position() end)
-    if ok and ball_pos and ball_pos.y <= self.cfg.floor_y + self.cfg.ball_ground_origin_offset + 0.15 then
+    local ball_pos = self._prop:position(self._ball)
+    if ball_pos and ball_pos.y <= self.cfg.floor_y + self.cfg.ball_ground_origin_offset + 0.15 then
         self:_settle("没顶到，本轮结束！")
         return
     end
@@ -236,8 +237,8 @@ function BallRallyState:_try_player_volley()
     if self._jump_window <= 0.0 or not self._target then
         return false
     end
-    local ok, ball_pos = pcall(function() return self._ball.get_position() end)
-    if not (ok and ball_pos) then
+    local ball_pos = self._prop:position(self._ball)
+    if not ball_pos then
         return false
     end
     local cfg = self.cfg
@@ -272,8 +273,8 @@ end
 
 ---@return boolean
 function BallRallyState:_ball_out_of_bounds()
-    local ok, pos = pcall(function() return self._ball.get_position() end)
-    if not (ok and pos) then
+    local pos = self._prop:position(self._ball)
+    if not pos then
         return true
     end
     local cfg = self.cfg
@@ -290,9 +291,9 @@ end
 -- ============================================================
 
 function BallRallyState:_launch_to_baby()
-    local ok, start = pcall(function() return self._ball.get_position() end)
+    local start = self._prop:position(self._ball)
     local baby_pos = self.agent.unit.get_position()
-    if not (ok and start and baby_pos) then
+    if not (start and baby_pos) then
         self:_settle("回球失败")
         return
     end
@@ -330,9 +331,9 @@ function BallRallyState:_update_to_baby(dt)
         return
     end
 
-    local ok, ball_pos = pcall(function() return self._ball.get_position() end)
+    local ball_pos = self._prop:position(self._ball)
     local baby_pos = self.agent.unit.get_position()
-    if not (ok and ball_pos and baby_pos) then
+    if not (ball_pos and baby_pos) then
         self:_settle("接球失败，本轮结束")
         return
     end
@@ -380,6 +381,7 @@ function BallRallyState:_begin_celebrate()
 
     self:_destroy_landing_indicator()
     self._prop:hold_at(self._ball, baby_pos + math.Vector3(0.0, self.cfg.serve_ball_height, 0.0))
+    -- 球可能已被打飞出界销毁，保留 pcall。
     pcall(function() baby.lift_unit(self._ball) end)
 
     agent:set_status("顶满啦！举高高～")
@@ -424,6 +426,7 @@ end
 ---@return Vector3
 function BallRallyState:_choose_player_target()
     local cfg = self.cfg
+    -- 玩家可能断线读不到位置，读不到时回退到场地中心（沿用原语义）。
     local pok, player_pos = pcall(function() return self._player.get_position() end)
     if not (pok and player_pos) then
         player_pos = math.Vector3(
@@ -543,6 +546,7 @@ function BallRallyState:_show_landing_marker(first)
             self._indicator_sfx_id = sfx_id
         end
     elseif self._indicator_sfx_id then
+        -- 同上，sfx 表现兜底。
         pcall(function()
             GlobalAPI.set_sfx_position(self._indicator_sfx_id, marker_pos)
         end)
@@ -551,6 +555,7 @@ end
 
 function BallRallyState:_destroy_landing_indicator()
     if self._indicator_sfx_id then
+        -- 同上，sfx 表现兜底。
         pcall(function()
             GlobalAPI.destroy_sfx(self._indicator_sfx_id, true)
         end)

@@ -158,16 +158,11 @@ function BabyAgent:update(dt)
 
     -- 需求倒计时 / 放下冻结已事件化（NeedRuntime 回调 / Timer.once），不再逐帧轮询。
 
-    -- 1. 行为状态 phase 推进
+    -- 行为状态 phase 推进；Movement / Animation 已在 invalidate() 时立即对齐，
+    -- 不再需要每帧兜底重新对齐（表现层由 ViewModel 绑定被动刷新，也无需在此轮询）。
     if self.active_state and self.active_state:is_active() then
         self.active_state:update(dt)
     end
-
-    -- 2/3. Movement / Animation 已在 invalidate() 时立即对齐；这两个调用只是
-    -- 「意图与已应用状态漂移时补对齐」的空转兜底，Phase 6 摘除。
-    self.movement:reconcile(dt)
-    self.animation:reconcile(dt)
-    -- 表现层由 ViewModel 绑定被动刷新（set_status 即触发），无需在此轮询
 end
 
 -- 强制 Movement / Animation 立即按当前意图重新对齐。
@@ -780,6 +775,8 @@ function BabyAgent:reject_timeout_lift_attempt(lift_unit)
     if self.destroyed or not self:is_in_state(Enum.BabyState.Cry) or not lift_unit then
         return false
     end
+    -- 三链 API 探测按引擎实测经验保留原样（哪个 lift API 对玩家单位生效是试出来的）；
+    -- lift_unit 是玩家控制的单位，玩家可能已断线/单位失效，pcall 保留。
     if lift_unit.lift then
         return pcall(function() lift_unit.lift() end)
     end
@@ -792,15 +789,10 @@ function BabyAgent:reject_timeout_lift_attempt(lift_unit)
     return false
 end
 
+-- 宝宝自己的单位：agent 未 destroy 前恒有效，直调，无需存在性检查/pcall。
 ---@return boolean
 function BabyAgent:_is_lifted_now()
-    if self.unit and self.unit.is_lifted_status then
-        local ok, lifted = pcall(function()
-            return self.unit.is_lifted_status()
-        end)
-        return ok and lifted or false
-    end
-    return false
+    return self.unit.is_lifted_status() or false
 end
 
 -- ============================================================

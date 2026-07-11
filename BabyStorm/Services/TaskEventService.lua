@@ -1,5 +1,6 @@
 local Class = require("BaseClass")
 local TaskEvents = require("Util.TaskEvents")
+local Timer = require("BabyStorm.Core.Timer")
 
 ---@class TaskEventService
 local TaskEventService = Class("TaskEventService")
@@ -24,10 +25,8 @@ end
 ---@param delay Fixed
 function TaskEventService:_emit_for_agent_after(agent, event_name, extra, delay)
     local role = agent.last_role
-    LuaAPI.call_delay_time(delay, function()
-        if agent.destroyed then
-            return
-        end
+    -- owner=agent：agent destroy 时 Timer 的 owner_dead 检查自动失效，无需手写 agent.destroyed 守卫。
+    Timer.once(agent, delay, function()
         if role then
             TaskEvents.emit(role, event_name, extra)
         else

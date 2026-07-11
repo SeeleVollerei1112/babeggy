@@ -95,8 +95,8 @@ function BallRallyCoordinator:_scan()
     for index = 1, #balls do
         local ball = balls[index]
         if self.prop:is_free(ball) then
-            local ok, ball_pos = pcall(function() return ball.get_position() end)
-            if ok and ball_pos then
+            local ball_pos = self.prop:position(ball)
+            if ball_pos then
                 local agent = self:_find_ball_need_agent(ball_pos, radius_sq)
                 if agent then
                     local role, player = self:_nearest_player_to(ball_pos)
@@ -149,6 +149,7 @@ function BallRallyCoordinator:_nearest_player_to(pos)
         if not player then
             return
         end
+        -- 玩家可能中途断线/单位失效，位置读不到就跳过这个候选人。
         local ok, player_pos = pcall(function() return player.get_position() end)
         if not (ok and player_pos) then
             return

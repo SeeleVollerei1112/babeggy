@@ -105,7 +105,12 @@ function CameraModeController.init(application)
         set_role_mode(roles[index], DEFAULT_MODE)
     end
 
-    -- 绑定 HUD 切换按钮（经 application 注册，destroy 时自动反注册）
+    -- 绑定 HUD 切换按钮（经 application 注册，destroy 时自动反注册）。没有 application
+    -- 就没有反注册的宿主，裸注册到全局触发器会成为无人清理的常驻监听——直接跳过绑定。
+    if not application then
+        Log.warn("camera mode switcher not bound: no application")
+        return
+    end
     local handler = function(event_name, actor, data)
         local role = data and data.role
         if role then
@@ -113,11 +118,7 @@ function CameraModeController.init(application)
         end
     end
     local event_spec = { EVENT.EUI_NODE_TOUCH_EVENT, UINodes.camera_mode_switcher, TOUCH_CLICK }
-    if application and application.register_global_trigger then
-        application.register_global_trigger(event_spec, handler)
-    else
-        LuaAPI.global_register_trigger_event(event_spec, handler)
-    end
+    application.register_global_trigger(event_spec, handler)
 end
 
 ---@param application GameApplication|nil

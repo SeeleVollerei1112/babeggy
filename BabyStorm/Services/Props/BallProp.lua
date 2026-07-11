@@ -87,6 +87,17 @@ function BallProp:balls()
     return self._balls
 end
 
+-- 球当前位置：球可能已被打飞出界被引擎销毁，读取保留 pcall（BallRallyState 各处判定统一改调本方法）。
+---@param ball Obstacle|Unit|nil
+---@return Vector3|nil
+function BallProp:position(ball)
+    if not ball then
+        return nil
+    end
+    local ok, pos = pcall(function() return ball.get_position() end)
+    return ok and pos or nil
+end
+
 -- 球是否处于“自由静止可接管”状态：没有被玩家/宝宝举着。
 -- 球可能已被丢出界销毁，is_lifted_status 读取保留 pcall。
 ---@param ball Obstacle|Unit|nil
@@ -107,6 +118,7 @@ end
 ---@param ball Obstacle|Unit
 ---@param pos Vector3
 function BallProp:hold_at(ball, pos)
+    -- 球可能已被丢出界销毁，保留 pcall。
     pcall(function()
         ball.set_linear_velocity(ZERO)
         ball.set_angular_velocity(ZERO)
@@ -139,6 +151,7 @@ end
 ---@param ball Obstacle|Unit
 ---@param was_held boolean
 function BallProp:settle(ball, was_held)
+    -- 球可能已被丢出界销毁，保留 pcall。
     pcall(function()
         if not was_held then
             ball.set_angular_velocity(ZERO)

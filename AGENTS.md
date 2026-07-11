@@ -40,12 +40,16 @@ Players are solving a time-pressure priority problem. The operation is simple, b
 - `App.PlayerSessionRegistry` owns deterministic per-role sessions and ordered traversal.
 - `BabyStorm/BabyStormController.lua` binds the module to the app lifecycle.
 - `BabyStorm/Config/` owns prefabs, item/need definitions, timing, scoring, and tuning.
-- `BabyStorm/Domain/` owns baby agents, state machine, and ViewModel state.
-- `BabyStorm/Services/` owns EggySDK side effects: spawning, arena queries, scoring, task events.
-- `BabyStorm/View/` owns scene UI and presentation.
+- `BabyStorm/Core/` owns concurrency primitives: `Timer` (owned timers, the only timing entry point) and `Drivers/` (continuous-motion drivers: Flight/Follow/SwingPump/Patrol).
+- `BabyStorm/Domain/` owns baby agents, the behavior state machine, and ViewModel state.
+  - `Domain/State/` top-level behavior states; `Domain/Interaction/` facility-interaction sub-states (nested in `InteractingFacilityState`); `Domain/Minigame/` minigame states (PlayRps/BallRally); `Domain/System/` Movement/Animation/ActionLock/NeedRuntime.
+- `BabyStorm/Coordinators/` owns thin coordinators: scan-and-pair, engine-event subscription forwarded to `agent:handle_event`, cross-player resources (UI routing, held items). No flow state, no intents.
+- `BabyStorm/Services/` owns stateless EggySDK capabilities: spawning, arena queries, facility registry, scoring, task events; `Services/Props/` owns prop capabilities (dice/ball engine access and physics switches).
+- `BabyStorm/View/` owns scene UI and presentation; only View-layer files (and presentation controllers) may require `Data.UINodes`.
 - `MVVM/` provides field-change notification. ViewModels do not know who listens to them.
-- `Util/` contains small shared helpers only when they remove real duplication.
+- `Util/` contains small shared helpers only when they remove real duplication; randomness goes through `Util/Rand` only (lockstep determinism).
 - `BabyStormDebug.lua` exposes lightweight editor debug entry points for start/stop/snapshot.
+- Baby-AI acceptance rules live in `.claude/rules/baby-ai-architecture.md` (intent fields, ActionLock, event + owned-timer + driver concurrency model).
 
 ## Extension Points
 
@@ -63,17 +67,24 @@ main.lua
   -> App.GameApp
      -> App.ControllerRegistry
         -> BabyStorm.BabyStormController
-           -> BabyStorm.BabyAgentManager
+           -> BabyStorm.BabyAgentManager        (0.1s tick via Core.Timer; dispatches state update(dt) only)
               -> App.TriggerRegistry
               -> App.PlayerSessionRegistry
               -> BabyStorm.Domain.GameViewModel
               -> BabyStorm.Domain.BabyAgent
-              -> BabyStorm.Domain.State.*
-              -> BabyStorm.Services.*
-              -> BabyStorm.View.BabySceneView
+                 -> Domain.System.*             (Movement/Animation/ActionLock/NeedRuntime)
+                 -> Domain.State.*              (Idle/Carried/SeekingItem/Satisfied/Upset/Cry)
+                 -> Domain.State.InteractingFacilityState
+                    -> Domain.Interaction.*     (Seat/Swing/Vehicle/PlayerBound/Catapult/Crib)
+                 -> Domain.Minigame.*           (PlayRpsState/BallRallyState)
+              -> BabyStorm.Coordinators.*       (Rps/BallRally/Crib; scan-pair + event forwarding)
+              -> BabyStorm.Services.*           (FacilityRegistry/Item/Need/Score/TaskEvent/...)
+                 -> Services.Props.*            (DiceProp/BallProp)
+              -> BabyStorm.Core.*               (Timer, Drivers: Flight/Follow/SwingPump/Patrol)
+              -> BabyStorm.View.*               (BabySceneView, CribCareView)
 ```
 
-The old `BabyMvp.lua` remains as a behavior reference only. Runtime entry now goes through `GameApp`.
+The old MVP script lives at `Docs/reference/BabyMvp.lua` as a behavior reference only. Runtime entry goes through `GameApp`.
 
 ## Eggy Runtime Notes
 

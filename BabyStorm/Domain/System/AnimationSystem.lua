@@ -6,7 +6,7 @@ local Timer = require("BabyStorm.Core.Timer")
 --
 -- 两层驱动，外部强制层优先：
 --   1) 意图层：行为层只写 agent.anim_base（+ 强制动作的 agent.anim_param），
---      invalidate() 立即对齐，reconcile(dt) 保留为空转兜底（Phase 6 摘除）。
+--      invalidate() 立即对齐，是唯一的对齐入口。
 --   2) 外部强制层：force_play(param, reason) / release(reason)，供 Interaction 子状态
 --      （设施坐姿/骑行/躺床）使用。外部激活期间意图层不播/不停任何动作；
 --      release 后重新按意图对齐。同一时刻只有一个外部 force（新的顶掉旧的）。
@@ -63,12 +63,6 @@ end
 -- 立即按当前意图对齐（意图变更后的正路入口）。
 function AnimationSystem:invalidate()
     self._applied_base = nil
-    self:_align()
-end
-
--- 空转兜底：意图与已应用动作漂移时补一次对齐（不再做 dt 累计；Phase 6 摘除本调用）。
----@param dt Fixed
-function AnimationSystem:reconcile(dt)
     self:_align()
 end
 

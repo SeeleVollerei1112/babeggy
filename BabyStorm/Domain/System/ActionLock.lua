@@ -10,7 +10,7 @@ local Class = require("BaseClass")
 -- 加/减一次，避免「只移除一次后永久禁动」的历史 bug。
 -- 同一 reason 重复 acquire 视为一次；release 不存在的 reason 是 no-op。
 --
--- 锁定期间 MovementSystem 必须强制 Stop（见 MovementSystem:reconcile）。
+-- 锁定期间 MovementSystem 必须强制 Stop（见 MovementSystem:_align）。
 ---@class ActionLock
 ---@field _unit Unit|LifeEntity|nil
 ---@field _reasons table<string, boolean>
@@ -89,6 +89,8 @@ function ActionLock:release_all()
     self:_disengage_engine()
 end
 
+-- pcall 豁免：本锁持有的 unit 是宝宝自己的单位，agent destroy 时会与本系统一起清场，
+-- 但 add_state/remove_state 边沿调用发生在 destroy 竞态附近，保留 pcall 兜底。
 ---@private
 function ActionLock:_engage_engine()
     local unit = self._unit

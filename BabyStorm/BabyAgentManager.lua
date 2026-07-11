@@ -11,12 +11,14 @@ local DifficultyService = require("BabyStorm.Services.DifficultyService")
 local RoundService = require("BabyStorm.Services.RoundService")
 local BallRallyCoordinator = require("BabyStorm.Coordinators.BallRallyCoordinator")
 local RpsCoordinator = require("BabyStorm.Coordinators.RpsCoordinator")
-local CribService = require("BabyStorm.Services.CribService")
+local CribCoordinator = require("BabyStorm.Coordinators.CribCoordinator")
+local CribCareView = require("BabyStorm.View.CribCareView")
 local CatapultLaunchService = require("BabyStorm.Services.CatapultLaunchService")
 local BabySceneView = require("BabyStorm.View.BabySceneView")
 local BabyAgent = require("BabyStorm.Domain.BabyAgent")
 local GameViewModel = require("BabyStorm.Domain.GameViewModel")
 local TriggerRegistry = require("App.TriggerRegistry")
+local Timer = require("BabyStorm.Core.Timer")
 local UnitUtil = require("Util.UnitUtil")
 local Log = require("Util.Log")
 
@@ -32,7 +34,8 @@ local Log = require("Util.Log")
 ---@field round RoundService
 ---@field ball_rally BallRallyCoordinator
 ---@field rps RpsCoordinator
----@field crib CribService
+---@field crib CribCoordinator
+---@field crib_view CribCareView
 ---@field catapult CatapultLaunchService
 ---@field view BabySceneView
 ---@field triggers TriggerRegistry
@@ -56,8 +59,9 @@ local Log = require("Util.Log")
 ---@field triggers TriggerRegistry
 local BabyAgentManager = Class("BabyAgentManager")
 
--- 统一 tick 间隔（秒）：约 3 个逻辑帧。所有宝宝的 NeedRuntime / 行为 phase /
--- Movement / Animation reconcile 都由这一个 tick 驱动（替代散落的 call_delay_time + token）。
+-- 统一 tick 间隔（秒）：约 3 个逻辑帧。行为状态 phase（Idle 扫描、Cry 倒计时、
+-- PlayRps/BallRally 传感、CribInteraction 歪床倒计时等）仍需要 dt，这一个 tick
+-- 给所有宝宝提供统一节拍；移动/动画的对齐已改为 invalidate() 时立即执行，不再靠本 tick 兜底。
 local TICK_DT = 0.1
 
 ---@param application GameApplication|nil
@@ -68,7 +72,6 @@ function BabyAgentManager:Ctor(application)
     self.services = nil
     self.started = false
     self.triggers = TriggerRegistry.New()
-    self._tick_token = 0
 end
 
 ---@return boolean
@@ -107,10 +110,12 @@ function BabyAgentManager:start()
     local round = RoundService.New(self.config, self.triggers, sessions, game_view_model)
     local ball_rally = BallRallyCoordinator.New(self.config, self.triggers, sessions)
     local rps = RpsCoordinator.New(self.config, self.triggers)
-    local crib = CribService.New(self.config, self.triggers)
+    local crib = CribCoordinator.New(self.config, self.triggers)
+    local crib_view = CribCareView.New(self.config, crib, facility)
     local catapult = CatapultLaunchService.New(self.config, self.triggers)
-    -- crib 通过 facility 注册表拿到所有床记录来绑场景 UI、读歪床状态；
-    -- 躺床后的 begin/end_session 由 CribInteraction 子状态调用（不再经 facility 回调）。
+    -- crib 通过 facility 注册表拿到所有床记录来路由 UI 事件、读/写歪床状态；
+    -- 换洗流程整段由 CribInteraction 子状态驱动，本协调器只管 UI 路由、玩家手持道具、
+    -- 床级歪倒/扶正——crib_view 只管场景 UI 表现，二者都不持有玩法判定。
     crib:set_facility_service(facility)
     -- catapult 需要 facility：发射时从 catapult 设施的 active_agent 找到骑在投臂上的宝宝。
     catapult:set_facility_service(facility)
@@ -129,6 +134,7 @@ function BabyAgentManager:start()
         ball_rally = ball_rally,
         rps = rps,
         crib = crib,
+        crib_view = crib_view,
         catapult = catapult,
         view = view,
         triggers = self.triggers,
@@ -140,8 +146,9 @@ function BabyAgentManager:start()
     end)
     item:init()
     facility:init()
-    -- 床已在 facility:init() 注册，crib:start() 才能给每张床绑场景 UI。
+    -- 床已在 facility:init() 注册，crib:start()/crib_view:start() 才能拿到每张床的记录。
     crib:start()
+    crib_view:start()
 
     for index = 1, self.config.baby.count do
         self:_create_baby(index)
@@ -162,16 +169,12 @@ end
 
 -- 启动统一 tick 循环：每 TICK_DT 把 dt 派发给每个宝宝的 update。
 function BabyAgentManager:_start_tick()
-    self._tick_token = self._tick_token + 1
-    self:_tick(self._tick_token)
+    Timer.every(self, TICK_DT, function()
+        self:_tick()
+    end)
 end
 
----@param token integer
-function BabyAgentManager:_tick(token)
-    if not self.started or self._tick_token ~= token then
-        return
-    end
-
+function BabyAgentManager:_tick()
     local agents = self.agents
     for index = 1, #agents do
         local agent = agents[index]
@@ -179,17 +182,6 @@ function BabyAgentManager:_tick(token)
             agent:update(TICK_DT)
         end
     end
-
-    if self.services and self.services.crib then
-        self.services.crib:update(TICK_DT)
-    end
-    if self.services and self.services.catapult then
-        self.services.catapult:update(TICK_DT)
-    end
-
-    LuaAPI.call_delay_time(TICK_DT, function()
-        self:_tick(token)
-    end)
 end
 
 ---@param index integer
@@ -265,8 +257,8 @@ function BabyAgentManager:destroy()
         return
     end
 
-    -- 令牌失效，统一 tick 循环下一拍自动停止。
-    self._tick_token = self._tick_token + 1
+    -- 统一 tick 循环挂在 manager 实例名下，一次性清场。
+    Timer.cancel_all(self)
 
     if self.services and self.services.round then
         self.services.round:stop()
@@ -277,6 +269,9 @@ function BabyAgentManager:destroy()
     end
     if self.services and self.services.rps then
         self.services.rps:destroy()
+    end
+    if self.services and self.services.crib_view then
+        self.services.crib_view:destroy()
     end
     if self.services and self.services.crib then
         self.services.crib:destroy()

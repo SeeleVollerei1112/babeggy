@@ -7,8 +7,7 @@ local Rand = require("Util.Rand")
 -- 行为层只写 agent.move_mode（+ move_target / pickup_target / wander_params）。
 --
 -- 运作模型（事件驱动）：
---   invalidate()   立即按当前 move_mode / action_lock 对齐（意图变更的正路）。
---   reconcile(dt)  空转兜底：仅在「已应用模式 ≠ 意图模式」时补一次对齐，Phase 6 摘除。
+--   invalidate()   立即按当前 move_mode / action_lock 对齐（意图变更的唯一入口）。
 --   周期性动作（巡逻换点、速度重申）挂 Timer，模式退出/锁定时取消。
 --
 -- 行为对照（保持历史行为）：
@@ -54,12 +53,6 @@ end
 -- 立即按当前意图/锁状态对齐（意图变更后的正路入口）。
 function MovementSystem:invalidate()
     self._applied_mode = nil
-    self:_align()
-end
-
--- 空转兜底：意图与已应用模式漂移时补一次对齐（不再做 dt 累计；Phase 6 摘除本调用）。
----@param dt Fixed
-function MovementSystem:reconcile(dt)
     self:_align()
 end
 

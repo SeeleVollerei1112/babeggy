@@ -43,6 +43,11 @@ end
 function InteractionBase:enter(duration)
 end
 
+---每 tick 推进（宿主状态 update 转发；需要暂停/续跑语义的倒计时用它，纯延时用 Timer）。
+---@param dt Fixed
+function InteractionBase:update(dt)
+end
+
 -- 基类兜底：取消子状态名下全部定时器。子类 override 后必须调 super.exit。
 function InteractionBase:exit()
     Timer.cancel_all(self)
