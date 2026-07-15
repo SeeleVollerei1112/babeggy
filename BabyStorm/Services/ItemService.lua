@@ -1,4 +1,5 @@
 local Class = require("BaseClass")
+local MathX = require("Util.MathX")
 local UnitUtil = require("Util.UnitUtil")
 local Log = require("Util.Log")
 
@@ -6,6 +7,7 @@ local Log = require("Util.Log")
 ---@field def BabyNeedDef
 ---@field equipment Equipment
 ---@field done boolean
+---@field restocked boolean -- 补给点的货被拿走后是否已在原处补过（见 _on_obtained）
 
 ---@alias ItemObtainedCallback fun(item:BabyItemRecord, data:table|nil)
 
@@ -41,9 +43,36 @@ end
 ---@return nil
 function ItemService:init()
     local needs = self.resolver and self.resolver:get_spawnable_equipment_needs() or self.config.needs
+    self:_clear_preplaced(needs)
     for index = 1, #needs do
         self:spawn_for_need(needs[index])
     end
+end
+
+-- 开局清场：把地图里预先摆好的同款食物全部销毁（货架上的样品、以及散落在场景各处的），
+-- 随后由 spawn_for_need 在补给点重新生成。
+-- 为什么必须清：这些预摆的物品不在 self.items 里，ItemService 的匹配只认自己生成的记录——
+-- 玩家捡到它们看着一模一样，抱到宝宝身边却不算满足需求。留着必然让人以为是 bug。
+---@param needs BabyNeedDef[]
+function ItemService:_clear_preplaced(needs)
+    local managed = {}
+    for index = 1, #needs do
+        managed[needs[index].item_key] = true
+    end
+
+    local list = GameAPI.get_all_equipments() or {}
+    local removed = 0
+    for index = 1, #list do
+        local equipment = list[index]
+        -- 逐件读 key/销毁：单件失败不该中断整轮清场。
+        pcall(function()
+            if managed[equipment.get_key()] then
+                equipment.destroy_equipment()
+                removed = removed + 1
+            end
+        end)
+    end
+    Log.info("item cleared preplaced", removed)
 end
 
 ---@param resolver NeedResolver
@@ -68,10 +97,12 @@ function ItemService:_set_item_text(equipment, need)
     end
 end
 
+-- 生成一件物品：配了 shop_pos 就固定生成在小卖部补给点（食物走这条），否则场地内随机落点。
 ---@param need BabyNeedDef
 ---@return BabyItemRecord|nil
 function ItemService:spawn_for_need(need)
-    local equipment = GameAPI.create_equipment(need.item_key, self.arena:random_ground_point())
+    local pos = MathX.to_vector3(need.shop_pos) or self.arena:random_ground_point()
+    local equipment = GameAPI.create_equipment(need.item_key, pos)
     if not equipment then
         Log.warn("failed to create equipment", need.id, need.item_key)
         return nil
@@ -83,6 +114,7 @@ function ItemService:spawn_for_need(need)
         def = need,
         equipment = equipment,
         done = false,
+        restocked = false,
     }
 
     self.items[#self.items + 1] = item
@@ -92,11 +124,24 @@ function ItemService:spawn_for_need(need)
     end
 
     self.triggers:unit(equipment, { EVENT.SPEC_EQUIPMENT_OBTAIN }, function(event_name, actor, data)
-        if self._obtained_callback then
-            self._obtained_callback(item, data)
-        end
+        self:_on_obtained(item, data)
     end)
     return item
+end
+
+-- 补给点：货被拿走的那一刻就在原处补一件新的——玩家来取、宝宝自己捡都算，小卖部始终有货。
+-- 只补一次（restocked 守卫）：SPEC_EQUIPMENT_OBTAIN 在这件货被反复捡起/丢下时会重复触发，
+-- 每次都补的话，一件货能刷出一整排。
+---@param item BabyItemRecord
+---@param data table|nil
+function ItemService:_on_obtained(item, data)
+    if item.def.shop_pos and not item.restocked then
+        item.restocked = true
+        self:spawn_for_need(item.def)
+    end
+    if self._obtained_callback then
+        self._obtained_callback(item, data)
+    end
 end
 
 ---@param item BabyItemRecord|nil
@@ -113,8 +158,11 @@ function ItemService:remove(item)
     end
 end
 
+-- 宝宝吃掉/用掉一件物品：销毁它。
+-- 补给点的货在「被拿起」那一刻就已经补过了（见 _on_obtained），这里不能再补，否则一件变两件。
+-- 只有从没被补过的（restocked=false，即随机落点那类物品）才在这里补生成一件，维持场上总量。
 ---@param item BabyItemRecord|nil
-function ItemService:destroy_and_respawn(item)
+function ItemService:consume(item)
     if not item then
         return
     end
@@ -123,7 +171,9 @@ function ItemService:destroy_and_respawn(item)
     if item.equipment and item.equipment.destroy_equipment then
         item.equipment.destroy_equipment()
     end
-    self:spawn_for_need(item.def)
+    if not item.restocked then
+        self:spawn_for_need(item.def)
+    end
 end
 
 ---@param pos Vector3

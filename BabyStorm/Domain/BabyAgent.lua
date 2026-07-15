@@ -692,7 +692,7 @@ function BabyAgent:finish_satisfied(item)
         return
     end
     if item then
-        self.services.item:destroy_and_respawn(item)
+        self.services.item:consume(item)
     end
     self:choose_next_need()
     self:enter_idle()

@@ -174,6 +174,7 @@ local Prefab = require("Data.Prefab")
 ---@field resolver "equipment"|"facility"|"ball_rally"|"rps"
 ---@field item_key integer|nil
 ---@field item_name string|nil
+---@field shop_pos Fixed[]|nil  -- 填了就只在这个补给点生成（小卖部货架）；nil = 场地内随机落点
 ---@field facility_id string|nil
 ---@field facility_name string|nil
 ---@field facility_names string[]|nil
@@ -241,6 +242,7 @@ local Prefab = require("Data.Prefab")
 ---@field crib BabyCribConfig
 ---@field dirty_diaper BabyDirtyDiaperConfig
 ---@field needs BabyNeedDef[]
+---@field disabled_needs BabyNeedDef[] -- 暂时下线、不参与任何逻辑的需求（见表上注释）
 
 ---@type BabyStormConfig
 local Config = {}
@@ -519,35 +521,58 @@ Config.difficulty = {
 }
 
 Config.needs = {
+    -- ========== 食物需求（四种，全部只在小卖部补给）==========
+    -- shop_pos = 小卖部货架上同名场景组件的实测坐标（editor-cli 取自 超大冰淇淋球/冰激凌/
+    -- 草莓奶昔/气泡水 四个物品单位）。ItemService 只在这些点生成食物，被拿走即原处补货；
+    -- 开局还会把地图里预摆的同款食物全部清掉，保证场上这四种食物只可能来自小卖部。
+    -- 挪货架后用 editor-cli 重新取坐标（同 crib.cabinet_pos 的做法）。
+    --
+    -- item_key 一律直接写数字，不走 Prefab.equipment 查表：Data/Prefab.lua 与
+    -- Data/EquipmentPrefab.lua 是插件自动导出的，当前已过期——里面 冰激凌_自定义 还是
+    -- 1073786889，而场景里冰激凌实际用的是 1073786935，查表会查出一个永远匹配不上的旧 key。
     {
         id = "milkshake",
         resolver = "equipment",
-        item_key = (Prefab.equipment and Prefab.equipment["草莓奶昔_自定义"]) or 1073774699,
+        item_key = 1073774699, -- 草莓奶昔_自定义
         item_name = "草莓奶昔",
         action_text = "奶昔",
         need_text = "想要喝奶昔",
         matched_text = "去喝奶昔",
         satisfied_text = "喝到奶昔了",
+        shop_pos = { -153.13, 3.85, 39.46 },
     },
     {
         id = "icecream",
         resolver = "equipment",
-        item_key = (Prefab.equipment and Prefab.equipment["冰激凌_自定义"]) or 1073786889,
+        item_key = 1073786935, -- 冰淇淋_自定义（场景组件名为“冰激凌”）
         item_name = "冰淇淋",
         action_text = "冰淇淋",
         need_text = "想要吃冰淇淋",
         matched_text = "去吃冰淇淋",
         satisfied_text = "吃到冰淇淋了",
+        shop_pos = { -153.32, 3.84, 37.26 },
     },
     {
-        id = "cake",
+        id = "big_icecream_ball",
         resolver = "equipment",
-        item_key = (Prefab.equipment and Prefab.equipment["提拉米苏_自定义"]) or 1073795131,
-        item_name = "提拉米苏",
-        action_text = "蛋糕",
-        need_text = "想要吃蛋糕",
-        matched_text = "去吃蛋糕",
-        satisfied_text = "吃到蛋糕了",
+        item_key = 1073795131, -- 超大冰淇淋球_自定义
+        item_name = "超大冰淇淋球",
+        action_text = "冰淇淋球",
+        need_text = "想要吃冰淇淋球",
+        matched_text = "去吃冰淇淋球",
+        satisfied_text = "吃到冰淇淋球了",
+        shop_pos = { -152.64, 3.89, 36.32 },
+    },
+    {
+        id = "soda",
+        resolver = "equipment",
+        item_key = 1073750021, -- 气泡水_自定义
+        item_name = "气泡水",
+        action_text = "气泡水",
+        need_text = "想要喝气泡水",
+        matched_text = "去喝气泡水",
+        satisfied_text = "喝到气泡水了",
+        shop_pos = { -152.665, 3.85, 41.605 },
     },
     {
         -- 顶球玩法需求：由 BallRallyCoordinator 扫描配对（宝宝持此需求且场上有可用沙滩球即开局）。
@@ -658,6 +683,12 @@ Config.needs = {
         seat_follow_orientation = true, -- true=朝向跟随床（与床方向一致），可叠加 seat_rotation
         seat_anim_id = 49,              -- 躺姿动作 id（不循环由 force_play 保持）；若 49 压不住待机可换成躺姿 AnimKey
     },
+}
+
+-- ========== 暂时下线的需求 ==========
+-- 本表不参与任何逻辑：NeedService 只从 Config.needs 抽签，ItemService / FacilityRegistry 也只遍历它。
+-- 想恢复某条需求，把整块原样搬回 Config.needs 即可——留在这里是为了不丢掉那些按实机调过的参数。
+Config.disabled_needs = {
     {
         id = "baby_car",
         resolver = "facility",
