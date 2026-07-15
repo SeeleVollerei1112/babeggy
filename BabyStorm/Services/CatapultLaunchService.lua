@@ -43,6 +43,7 @@ local DEFAULT_LAUNCH_DELAY = 0.25
 local DEFAULT_FLIGHT_DURATION = 1.2
 local DEFAULT_ARC_PEAK = 4.0
 local DEFAULT_FLIGHT_HANG = 0.4
+local DEFAULT_ARM_RESET_DELAY = 1.0
 
 ---@param config BabyStormConfig
 ---@param triggers TriggerRegistry
@@ -64,6 +65,7 @@ end
 ---@return boolean
 function CatapultLaunchService:start(_agents)
     self:_bind_button_canvas()
+    self:_capture_home_poses()
 
     -- 发射信号：主监听按钮发出的自定义事件（与运动器同一个，点击必触发），
     -- 节点点击事件作兜底。两条都进 on_launch_pressed，由 self.active 去重防重复发射。
@@ -101,6 +103,53 @@ function CatapultLaunchService:_probe_landing_touch(unit_id)
             Log.info("[PROBE] 点击落点区触发了，但 data.touch_pos 为空", tostring(data))
         end
     end)
+end
+
+-- 记下每台投石车投臂的原始姿态，供发射后回正。
+-- 时机：manager 启动、地图刚加载、运动器一次都还没转过——此刻投臂就是编辑器里摆好的样子。
+-- 刻意不写死坐标：以后在编辑器里挪动投石车，这里自动跟着走，不会留下一份会悄悄过期的副本。
+function CatapultLaunchService:_capture_home_poses()
+    local list = self.facility and self.facility:get_facilities_by_kind("catapult") or {}
+    for index = 1, #list do
+        local facility = list[index]
+        local arm = facility.unit
+        if arm then
+            facility.catapult_home_pos = arm.get_position()
+            facility.catapult_home_rot = arm.get_orientation()
+            local p = facility.catapult_home_pos
+            Log.info("catapult home pose", facility.def.id, "pos", p and p.x, p and p.y, p and p.z)
+        else
+            Log.warn("catapult home pose skipped: 投臂单位缺失", facility.def.id)
+        end
+    end
+end
+
+-- 运动器是单程的：发射后投臂停在末态不会自己回去，得脚本把它摆回原位，
+-- 否则下一个宝宝坐上来时投臂还翻着，发射姿态全错。
+-- 时机：宝宝落地结算后再等 arm_reset_delay，让玩家看清宝宝飞出去，投臂才复位。
+---@param facility BabyFacilityRecord
+function CatapultLaunchService:_schedule_arm_reset(facility)
+    if not facility.catapult_home_rot then
+        return
+    end
+    local delay = facility.def.arm_reset_delay or DEFAULT_ARM_RESET_DELAY
+    Timer.once(self, delay, function()
+        self:_reset_arm(facility)
+    end)
+end
+
+---@param facility BabyFacilityRecord
+function CatapultLaunchService:_reset_arm(facility)
+    local arm = facility.unit
+    if not (arm and facility.catapult_home_rot) then
+        return
+    end
+    -- 平滑摆回：观感上是投石车自己在复位，而不是"啪"地闪回。
+    arm.set_orientation_smooth(facility.catapult_home_rot)
+    if facility.catapult_home_pos then
+        arm.set_position_smooth(facility.catapult_home_pos)
+    end
+    Log.info("catapult arm reset", facility.def.id)
 end
 
 -- 把发射按钮画布贴到投石车组件上（照 CribCareView 贴柜子UI 的做法），让玩家看得到按钮。
@@ -211,6 +260,9 @@ function CatapultLaunchService:_on_landed()
         agent:complete_facility_interaction(facility)
         Log.info("catapult landed", "baby", agent.index)
     end
+    if facility then
+        self:_schedule_arm_reset(facility)
+    end
     self.active = nil
 end
 
@@ -222,6 +274,10 @@ function CatapultLaunchService:_abort(reason)
     local facility = self.active and self.active.facility or nil
     if agent and not agent.destroyed and facility then
         agent:fail_facility_interaction(facility)
+    end
+    -- 按钮已经点过，运动器照样把投臂摆了出去——发射作废也要把臂收回来。
+    if facility then
+        self:_schedule_arm_reset(facility)
     end
     self.active = nil
     Log.info("catapult launch aborted", reason)

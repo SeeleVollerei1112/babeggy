@@ -15,6 +15,8 @@ local Log = require("Util.Log")
 ---@field contact_area Unit|nil
 ---@field active_agent BabyAgent|nil      -- 占用者，由 InteractingFacilityState enter/exit 写
 ---@field orient_unit Unit|nil            -- 坐姿朝向源（投石车投臂），由 CatapultInteraction 解析缓存
+---@field catapult_home_pos Vector3|nil   -- 投臂原始姿态，启动时记录、发射后回正用；由 CatapultLaunchService 拥有
+---@field catapult_home_rot Quaternion|nil
 ---@field crib_session CribCareSession|nil -- CribCareSession 定义见 CribInteraction.lua；以下 crib_* 字段由 CribInteraction/CribCoordinator 拥有
 ---@field crib_tilted boolean|nil
 ---@field crib_reset_progress number|nil

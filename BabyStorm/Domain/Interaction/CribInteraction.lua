@@ -177,6 +177,8 @@ function CribInteraction:_complete_care()
         self._press_timer = nil
     end
     self.agent.services.crib:consume_held(session.pressing_role)
+    -- 换下来的脏尿布：以换洗玩家为原点抛到身边，落地/滚动沿路留赃物（DirtyDiaperProp 自理）。
+    self.agent.services.dirty_diaper:throw_from(session.last_role)
     if session.last_role then
         self.agent.last_role = session.last_role
     end

@@ -13,6 +13,7 @@ local BallRallyCoordinator = require("BabyStorm.Coordinators.BallRallyCoordinato
 local RpsCoordinator = require("BabyStorm.Coordinators.RpsCoordinator")
 local CribCoordinator = require("BabyStorm.Coordinators.CribCoordinator")
 local CribCareView = require("BabyStorm.View.CribCareView")
+local DirtyDiaperProp = require("BabyStorm.Services.Props.DirtyDiaperProp")
 local CatapultLaunchService = require("BabyStorm.Services.CatapultLaunchService")
 local BabySceneView = require("BabyStorm.View.BabySceneView")
 local BabyAgent = require("BabyStorm.Domain.BabyAgent")
@@ -36,6 +37,7 @@ local Log = require("Util.Log")
 ---@field rps RpsCoordinator
 ---@field crib CribCoordinator
 ---@field crib_view CribCareView
+---@field dirty_diaper DirtyDiaperProp
 ---@field catapult CatapultLaunchService
 ---@field view BabySceneView
 ---@field triggers TriggerRegistry
@@ -112,6 +114,7 @@ function BabyAgentManager:start()
     local rps = RpsCoordinator.New(self.config, self.triggers)
     local crib = CribCoordinator.New(self.config, self.triggers)
     local crib_view = CribCareView.New(self.config, crib, facility)
+    local dirty_diaper = DirtyDiaperProp.New(self.config)
     local catapult = CatapultLaunchService.New(self.config, self.triggers)
     -- crib 通过 facility 注册表拿到所有床记录来路由 UI 事件、读/写歪床状态；
     -- 换洗流程整段由 CribInteraction 子状态驱动，本协调器只管 UI 路由、玩家手持道具、
@@ -135,6 +138,7 @@ function BabyAgentManager:start()
         rps = rps,
         crib = crib,
         crib_view = crib_view,
+        dirty_diaper = dirty_diaper,
         catapult = catapult,
         view = view,
         triggers = self.triggers,
@@ -275,6 +279,9 @@ function BabyAgentManager:destroy()
     end
     if self.services and self.services.crib then
         self.services.crib:destroy()
+    end
+    if self.services and self.services.dirty_diaper then
+        self.services.dirty_diaper:destroy()
     end
     if self.services and self.services.catapult then
         self.services.catapult:destroy()

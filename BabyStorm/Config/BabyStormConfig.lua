@@ -9,6 +9,7 @@ local Prefab = require("Data.Prefab")
 ---@field fallback_min_z Fixed
 ---@field fallback_max_z Fixed
 ---@field fallback_y Fixed
+---@field floor_y Fixed
 
 ---@class BabyBallRallyConfig
 ---@field enabled boolean
@@ -105,6 +106,30 @@ local Prefab = require("Data.Prefab")
 ---@field tilt_degrees Fixed
 ---@field reset_complete_event string
 ---@field sub_types BabyCribSubType[]
+
+---@class BabyDirtyDiaperConfig
+---@field enabled boolean
+---@field prefab integer
+---@field scale Fixed[]
+---@field spawn_offset Fixed[]
+---@field throw_speed Fixed
+---@field throw_up_speed Fixed
+---@field throw_spin Fixed
+---@field kick_delay Fixed
+---@field side_jitter Fixed
+---@field track_interval Fixed
+---@field land_drop_epsilon Fixed
+---@field decal_keys integer[]
+---@field decal_y_offset Fixed
+---@field decal_layer_step Fixed
+---@field decal_layers integer
+---@field decal_scale_min Fixed
+---@field decal_scale_max Fixed
+---@field decal_spread Fixed
+---@field trail_step Fixed
+---@field decal_max integer
+---@field max_piles integer
+
 ---@class BabyRuntimeConfig
 ---@field prefab_id integer
 ---@field count integer
@@ -199,6 +224,7 @@ local Prefab = require("Data.Prefab")
 ---@field launch_delay Fixed|nil
 ---@field flight_duration Fixed|nil
 ---@field flight_arc_peak Fixed|nil
+---@field arm_reset_delay Fixed|nil
 ---@field flight_hang Fixed|nil
 ---@field need_timeout_min_seconds integer|nil
 ---@field need_timeout_max_seconds integer|nil
@@ -213,6 +239,7 @@ local Prefab = require("Data.Prefab")
 ---@field ball_rally BabyBallRallyConfig
 ---@field rps BabyRpsConfig
 ---@field crib BabyCribConfig
+---@field dirty_diaper BabyDirtyDiaperConfig
 ---@field needs BabyNeedDef[]
 
 ---@type BabyStormConfig
@@ -229,6 +256,11 @@ Config.arena = {
     fallback_min_z = 2.932,
     fallback_max_z = 52.932,
     fallback_y = 2.6,
+    -- 全图地面高度：整张图铺在“方块-可变形53”（unit 1555857207）这一块大板上，
+    -- 它的顶面 = aabb_center.y 1.723 + 厚度 1.322 / 2 = 2.384（编辑器实测）。
+    -- 这里是唯一来源：ball_rally.floor_y 与脏尿布贴花都引用它，别再各写一份，
+    -- 否则哪天挪了地板就会留下一处悄悄过期的数字。
+    floor_y = 2.384,
 }
 
 Config.ball_rally = {
@@ -248,7 +280,7 @@ Config.ball_rally = {
     max_x = -100.297,
     min_z = 2.932,
     max_z = 52.932,
-    floor_y = 2.384,
+    floor_y = Config.arena.floor_y,
     ball_ground_origin_offset = 0.45,
 
     -- 运动学参数化弧线（见 BallRallyState._begin_flight + Core/Drivers/FlightDriver）：弧高与时长解耦。
@@ -392,6 +424,50 @@ Config.crib = {
         },
     },
 }
+
+-- 脏尿布：换尿布/擦屁屁完成时以玩家为原点抛出，落地处溅一簇赃物贴花，滚动途中沿路带出赃物。
+Config.dirty_diaper = {
+    enabled = true,
+    prefab = 1073832010,
+    scale = { 0.6, 0.6, 0.6 },
+    spawn_offset = { 0, 1.0, 0 }, -- 出手点相对玩家枢轴（约在手/腰的高度）
+    -- 抛出初速：水平沿玩家朝向、垂直向上，之后交给引擎物理自己弹和滚。
+    throw_speed = 5.0,
+    throw_up_speed = 4.0,
+    throw_spin = 8.0, -- 绕行进方向水平垂线的角速度（弧度/秒），让它翻着滚
+    -- 创建后隔多久才给初速：组件的物理体不是创建当帧就绪的，同帧给会被吞掉（尿布直接掉脚下）。
+    kick_delay = 0.05,
+    side_jitter = 0.4,        -- 抛出方向左右随机偏移比例，连续换洗不会叠成一条线
+    -- 跟踪（只用于判触地/挪动后盖贴花，不控位移——位移全程是引擎物理）
+    track_interval = 0.1,     -- 也是赃物出现的延迟上限：触地后最多这么久就盖出来
+    land_drop_epsilon = 0.05, -- 单 tick 下落超过该高度才算“正在下落”（落地判定用）
+    -- 赃物贴花：这两个是「装饰物」编号，走 GameAPI.create_decoration 创建（不是组件，
+    -- obstacle 预设表里查不到它们）。贴片原始尺寸 5×5×0.1，枢轴在正中心，所以 scale
+    -- 0.12~0.22 对应 0.6~1.1 米的一坨，1.0 会做出 5 米的巨型污渍。
+    decal_keys = { 200456, 200455 },
+    -- 贴花高度 = 地面平面 arena.floor_y + 这个偏移（不跟尿布当时的高度走，否则举着/踢飞时
+    -- 会盖到蛋仔头顶或半空）。贴片枢轴在正中心、厚 0.1×scale，给一点点正值就正好压在地面上；
+    -- 浮空/陷地就微调这里。
+    decal_y_offset = 0.4,
+    -- 防 z-fighting：贴花逐块错开的层高，错开 decal_layers 层后回绕。等高的两块一旦重叠，
+    -- 顶面共面会让画面在两者之间反复跳（表现为赃物“抽搐”）。层高远小于贴片自身厚度，看不出高低。
+    decal_layer_step = 0.004,
+    decal_layers = 8,
+    decal_scale_min = 0.45,
+    decal_scale_max = 0.60,
+    decal_spread = 0.15, -- 贴花相对尿布落点的随机散布半径
+    -- 落地盖 1 块；之后玩家每把尿布蹭动 trail_step 米就再带出 1 块（一次只出一块，
+    -- 要再出得重新挪够），放下的那一下也立刻掉一块。
+    -- 尿布自己不会滚（引擎触地即清零速度，见 DirtyDiaperProp 文件头），赃物全靠玩家蹭出来。
+    -- 想让赃物之间不挨着，这个值要大于贴花直径（= decal_scale × 5，当前约 2.25~3 米），
+    -- 否则前后两块必然重叠。
+    trail_step = 4.0,
+    -- 一坨尿布总共最多脏出几块（落地那块算在内）：用完就彻底不再生成，
+    -- 例如落地 1 块 + 放下两次 2 块 = 3 块，之后随便怎么踢都不脏了。
+    decal_max = 3,
+    max_piles = 6, -- 场上最多保留几坨（超出销毁最早的那坨，含其贴花）
+}
+
 Config.baby = {
     prefab_id = (Prefab.character and Prefab.character["宝宝蛋"]) or 1073741937,
     count = 3,
@@ -555,6 +631,9 @@ Config.needs = {
         flight_duration = 1.2, -- 抛物线时长（越大越慢）
         flight_arc_peak = 4.0, -- 抛物线拱高（越大抛得越高）
         flight_hang = 0.4, -- 顶点悬停感 [0,1]
+        -- 回正：运动器是单程的，发射后投臂停在末态不会自己回去，由 CatapultLaunchService
+        -- 在宝宝落地结算后平滑摆回启动时记录的原始姿态（不写死坐标，挪投石车不用改代码）。
+        arm_reset_delay = 1.0, -- 落地到投臂开始复位的间隔（秒），留给玩家看宝宝飞出去
     },
     {
         -- 婴儿床：玩家把宝宝抱到床上放下 → 躺姿(动作49)绑床 → 随机弹出「换尿布/擦屁股」子需求。
