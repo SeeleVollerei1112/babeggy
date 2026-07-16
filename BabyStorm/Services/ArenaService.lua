@@ -1,5 +1,6 @@
 local Class = require("BaseClass")
 local Rand = require("Util.Rand")
+local MathX = require("Util.MathX")
 local Log = require("Util.Log")
 
 ---@class ArenaService
@@ -72,6 +73,23 @@ function ArenaService:ground_point(point)
         return math.Vector3(point.x, best_y, point.z)
     end
     return point
+end
+
+-- 把点夹回场地安全区（fallback_* 那个内缩矩形）。
+-- random_point 天然落在场地内，不需要夹；但「就近散步」的目标点是「当前位置 ± radius」，
+-- 站在边上的宝宝能挑到地板外面去——夹一下，免得它一路走下去摔出场。
+---@param point Vector3
+---@return Vector3
+function ArenaService:clamp_to_bounds(point)
+    local arena = self.config.arena
+    if not (arena.fallback_min_x and arena.fallback_max_x and arena.fallback_min_z and arena.fallback_max_z) then
+        return point
+    end
+    return math.Vector3(
+        MathX.clamp(point.x, arena.fallback_min_x, arena.fallback_max_x),
+        point.y,
+        MathX.clamp(point.z, arena.fallback_min_z, arena.fallback_max_z)
+    )
 end
 
 ---@return Vector3

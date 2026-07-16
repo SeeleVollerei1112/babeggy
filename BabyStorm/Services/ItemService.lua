@@ -176,24 +176,49 @@ function ItemService:consume(item)
     end
 end
 
+-- 把玩具放回地上：与 consume 相对——不销毁、不出列，落地后还能被再次捡起。
+-- 玩具是反复把玩的道具，不像食物那样一次性吃掉（见 PlayingToyState:exit）。
+---@param item BabyItemRecord|nil
+function ItemService:drop_to_ground(item)
+    if not (item and item.equipment) then
+        return
+    end
+    -- 装备单位可能已被回收销毁（清场/被抢走后销毁），保留 pcall。
+    pcall(function()
+        if item.equipment.set_droppable then
+            item.equipment.set_droppable(true)
+        end
+        if item.equipment.drop then
+            item.equipment.drop()
+        end
+    end)
+end
+
+-- 「还掉在世界里、可以被走过去捡」的判定，nearest_* 系列共用一份。
+--
+-- has_owner() 只报**装备槽位持有**：宝宝把玩具攥在手里时它是 true，因此把玩中的玩具
+-- 不会被别的宝宝抢走；玩家正常拾取的物品同理跳过。
+---@param item BabyItemRecord
+---@return boolean
+function ItemService:_is_on_ground(item)
+    if item.done then
+        return false
+    end
+    return not (item.equipment.has_owner and item.equipment.has_owner())
+end
+
+-- 就近找一件满足 accept 的地面物品；超出 radius 返回 nil。
 ---@param pos Vector3
----@param need BabyNeedDef|nil
+---@param radius Fixed
+---@param accept fun(item:BabyItemRecord):boolean
 ---@return BabyItemRecord|nil
-function ItemService:nearest_match(pos, need)
+function ItemService:_nearest_accepted(pos, radius, accept)
     local best = nil
     local best_dist = nil
 
     for index = 1, #self.items do
         local item = self.items[index]
-        local matches = not need
-        if need and self.resolver then
-            matches = self.resolver:item_matches_need(item, need)
-        end
-
-        -- 被玩家/生物持有的物品不算“放在地上”，跳过：只认掉落在世界里的物品，
-        -- 避免宝宝去追别人手里还拿着的东西（“放到身边”才触发需求判断）
-        local held = item.equipment.has_owner and item.equipment.has_owner()
-        if not item.done and matches and not held then
+        if self:_is_on_ground(item) and accept(item) then
             local item_pos = item.equipment.get_position and item.equipment.get_position()
             if item_pos then
                 local dist = UnitUtil.distance_xz_sq(pos, item_pos)
@@ -205,11 +230,38 @@ function ItemService:nearest_match(pos, need)
         end
     end
 
-    local radius = self.config.baby.item_pickup_radius
     if best_dist and best_dist <= radius * radius then
         return best
     end
     return nil
+end
+
+---@param pos Vector3
+---@param need BabyNeedDef|nil
+---@return BabyItemRecord|nil
+function ItemService:nearest_match(pos, need)
+    return self:_nearest_accepted(pos, self.config.baby.item_pickup_radius, function(item)
+        -- need 缺省＝不挑物品（nearest_to 的“附近有什么捡什么”）；给了 need 却没有 resolver
+        -- 时一律不匹配——宁可不捡，也不能在规则缺席时乱认。
+        if not need then
+            return true
+        end
+        if not self.resolver then
+            return false
+        end
+        return self.resolver:item_matches_need(item, need)
+    end)
+end
+
+-- 就近找一件可把玩的玩具，无视当前需求：给 Idle 的「随手捡玩具」用。
+-- 与 nearest_match 的区别是不看需求、半径由调用方给（随手捡的搜索范围比取物大）。
+---@param pos Vector3
+---@param radius Fixed
+---@return BabyItemRecord|nil
+function ItemService:nearest_playable(pos, radius)
+    return self:_nearest_accepted(pos, radius, function(item)
+        return item.def.playable == true
+    end)
 end
 
 ---@param pos Vector3

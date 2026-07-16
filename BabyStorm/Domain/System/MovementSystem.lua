@@ -2,6 +2,7 @@ local Class = require("BaseClass")
 local Intent = require("BabyStorm.Domain.BabyIntent")
 local Timer = require("BabyStorm.Core.Timer")
 local Rand = require("Util.Rand")
+local Log = require("Util.Log")
 
 -- 移动系统：全工程**唯一**真正改变宝宝位置 / 下发移动指令 / 开关 AI 的地方。
 -- 行为层只写 agent.move_mode（+ move_target / pickup_target / wander_params）。
@@ -13,9 +14,9 @@ local Rand = require("Util.Rand")
 -- 行为对照（保持历史行为）：
 --   Stop         停在原地。
 --   Wander       巡逻：进入时立刻发第一个巡逻点，之后每 interval 换一个点。
---                参数缺省时 move_speed 比率被压成 0，宝宝实际几乎不位移——这是既有设计
---                （宝宝平时驻留，只有取物/被抱时才动）；调用方可通过 wander_params
---                给出锚点小半径挪动 / 真实速度的参数化巡逻。
+--                参数缺省时 move_speed 比率被压成 0，宝宝实际几乎不位移（Idle 的驻留就靠这个缺省）。
+--                要真位移必须经 wander_params 显式给 speed_ratio：漫游（WanderingState）、
+--                拿着玩具乱跑（PlayingToyState）、猜拳配对小步挪动都是这么做的。
 --   PickupTarget 朝 agent.pickup_target（装备）寻路并拾取，速度比率提到 pickup_move_speed_ratio。
 --   MoveToTarget 朝 agent.move_target（坐标）移动（预留）。
 --   Carried      被举起：引擎驱动，逻辑层不发任何移动指令。
@@ -106,6 +107,11 @@ end
 function MovementSystem:_begin_wander(unit)
     local params = self._agent.wander_params or {}
     local interval = params.interval or self._agent.config.baby.patrol_interval
+    -- 必须先开 AI 再发巡逻指令，同 _begin_pickup：Stop 模式与 ActionLock 都会 stop_ai，
+    -- 而解锁/退出 Stop 都不会自动 start_ai（见本文件「语义动作接口」处的引擎坑位说明），
+    -- 漏了这一句，start_move_to_pos_with_threshold 会静默失效、宝宝站着不动。
+    -- 历史上没暴露：Idle 的巡逻速度比率是 0，指令失效和速度为 0 看起来一模一样。
+    unit.start_ai()
     self:_command_wander_point(unit)
     self._wander_timer = Timer.every(self, interval, function()
         local cur = self._agent.unit
@@ -124,24 +130,41 @@ function MovementSystem:_command_wander_point(unit)
     self:_set_speed(unit, params.speed_ratio or 0.0)
     local target = self:_make_wander_target(unit, params)
     if target then
+        -- 引擎签名是 (目标点, 持续时间, 容错距离)（见 EggyAPI.lua）。历史写法是
+        -- (target, threshold, 0.5)——把「容错距离」塞进了「持续时间」，实参顺序反了。
+        -- 持续时间给满一个换点周期，宝宝才会一路走到下次换点；给 0.5 就是走半秒站着等。
+        local duration = params.interval or agent.config.baby.patrol_interval
         local threshold = params.threshold or agent.config.baby.patrol_threshold
-        unit.start_move_to_pos_with_threshold(target, threshold, 0.5)
+        -- TODO(调试): 临时诊断「拿到玩具后站着不动」，确认修好后删除。
+        local from = unit.get_position and unit.get_position()
+        Log.info("wander cmd baby", agent.index, "speed", params.speed_ratio or 0.0,
+            "from", from and from.x, from and from.z, "to", target.x, target.z,
+            "dur", duration, "th", threshold)
+        unit.start_move_to_pos_with_threshold(target, duration, threshold)
     end
 end
 
--- 巡逻点选取：anchor+radius 同时给出时，在锚点小半径内挪动（x/z 各偏 ±radius，y 用锚点高度，
--- 对应猜拳配对 fidget 语义：半径很小，保证不走出配对范围）；否则用场地随机点（y 用当前高度）。
+-- 巡逻点选取：
+--   * 给了 radius = 「就近散步」，在半径内挑点（x/z 各偏 ±radius）。锚点缺省用宝宝**当前位置**
+--     （走到哪从哪继续逛，是漫游/抱着玩具乱跑的语义）；猜拳配对那种要钉住原地的自己传 anchor。
+--   * 都没给 = 场地随机点（y 用当前高度）。注意这种点动辄二三十米开外，配上几秒一次的换点，
+--     宝宝会光转身不赶路、看着像原地抽搐——要真散步就给 radius。
 ---@private
 ---@param unit Unit|LifeEntity
 ---@param params BabyWanderParams
 ---@return Vector3|nil
 function MovementSystem:_make_wander_target(unit, params)
-    if params.anchor and params.radius then
-        return math.Vector3(
-            params.anchor.x + Rand.signed() * params.radius,
-            params.anchor.y,
-            params.anchor.z + Rand.signed() * params.radius
-        )
+    if params.radius then
+        local anchor = params.anchor or unit.get_position()
+        if anchor then
+            local target = math.Vector3(
+                anchor.x + Rand.signed() * params.radius,
+                anchor.y,
+                anchor.z + Rand.signed() * params.radius
+            )
+            -- 夹回场地：散步半径不小，站在边上的宝宝挑到的点可能已经在地板外了。
+            return self._agent.services.arena:clamp_to_bounds(target)
+        end
     end
     local random = self._agent.services.arena:random_point()
     if not random then
@@ -183,7 +206,9 @@ end
 ---@param target Vector3|nil
 function MovementSystem:_command_move_to(unit, target)
     if target then
-        unit.start_move_to_pos_with_threshold(target, self._agent.config.baby.patrol_threshold, 0.5)
+        -- 同 _command_wander_point：引擎签名是 (目标点, 持续时间, 容错距离)。
+        local baby = self._agent.config.baby
+        unit.start_move_to_pos_with_threshold(target, baby.patrol_interval, baby.patrol_threshold)
     end
 end
 

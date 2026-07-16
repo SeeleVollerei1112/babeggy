@@ -29,6 +29,8 @@ local Log = require("Util.Log")
 ---@field reason string|nil
 ---@field status_text string|nil
 ---@field suppress_lift_event boolean|nil
+---@field satisfies boolean|nil   -- PlayingToy：这件玩具正好是当前需求，玩完要结算满足
+---@field keep_item boolean|nil   -- Satisfied：玩具型满足，别销毁物品（已原地放下，留在场上）
 ---@field delivery_method "baby_to_item"|"item_to_baby"|"baby_to_facility"|nil
 
 ---@class BabyAgent
@@ -58,6 +60,7 @@ local Log = require("Util.Log")
 ---@field pending_item BabyItemRecord|nil
 ---@field pending_purpose "satisfy"|"reject"|nil
 ---@field is_rejecting boolean
+---@field toy_play_cooldown boolean
 ---@field need_timeout_bonus_seconds integer
 ---@field timeout_action_bonus_seconds integer
 ---@field active_facility BabyFacilityRecord|nil
@@ -109,6 +112,7 @@ function BabyAgent:Ctor(index, unit, services, config)
     self.pending_item = nil
     self.pending_purpose = nil
     self.is_rejecting = false
+    self.toy_play_cooldown = false
     self.need_timeout_bonus_seconds = 0
     self.timeout_action_bonus_seconds = 0
     self.active_facility = nil
@@ -226,7 +230,10 @@ function BabyAgent:_start_need_countdown(seconds)
             if self.destroyed then
                 return
             end
-            if self:is_in_state(Enum.BabyState.Idle) or self:is_in_state(Enum.BabyState.Carried) then
+            -- Wandering 与 Idle 同为“空闲”，漫游时倒计时气泡也要照常刷新，不然一起身就卡住不动。
+            if self:is_in_state(Enum.BabyState.Idle)
+                or self:is_in_state(Enum.BabyState.Wandering)
+                or self:is_in_state(Enum.BabyState.Carried) then
                 self:set_status(self:_format_need_countdown(remaining))
             end
         end,
@@ -371,6 +378,8 @@ function BabyAgent:_new_state(state_id)
     local cls
     if state_id == Enum.BabyState.Idle then
         cls = require("BabyStorm.Domain.State.IdleState")
+    elseif state_id == Enum.BabyState.Wandering then
+        cls = require("BabyStorm.Domain.State.WanderingState")
     elseif state_id == Enum.BabyState.Carried then
         cls = require("BabyStorm.Domain.State.CarriedState")
     elseif state_id == Enum.BabyState.SeekingItem then
@@ -383,6 +392,8 @@ function BabyAgent:_new_state(state_id)
         cls = require("BabyStorm.Domain.State.UpsetState")
     elseif state_id == Enum.BabyState.Cry then
         cls = require("BabyStorm.Domain.State.CryState")
+    elseif state_id == Enum.BabyState.PlayingToy then
+        cls = require("BabyStorm.Domain.State.PlayingToyState")
     elseif state_id == Enum.BabyState.PlayRps then
         cls = require("BabyStorm.Domain.Minigame.PlayRpsState")
     elseif state_id == Enum.BabyState.BallRally then
@@ -502,6 +513,12 @@ function BabyAgent:on_lifted_end(data)
     end
 
     local wrong = self.services.item:nearest_to(pos)
+    -- 玩具不参与「放下即捡」：玩家把宝宝抱到不匹配的玩具旁放下时什么都不该发生——
+    -- 不捡、不表现、不切状态，就当没看见（照常回 Idle 举需求气泡）。
+    -- 宝宝自己想玩玩具只发生在起身漫游那一刻（见 try_pick_toy_for_fun），不受玩家摆布。
+    if wrong and wrong.def.playable then
+        wrong = nil
+    end
     if wrong then
         -- 不是宝宝想要的：先捡到手上，之后再丢掉并表示不满意
         self:cancel_movement_hold()
@@ -574,31 +591,103 @@ function BabyAgent:_resolve_pickup(item)
     if self.is_rejecting then
         return
     end
-    if self.pending_purpose == "reject" then
+    -- 玩具豁免 reject：捡到玩具一律是「玩一会儿再放下」，是不是当前需求只影响收尾。
+    if item.def.playable then
+        self:begin_toy_play(item)
+    elseif self.pending_purpose == "reject" then
         self:reject_wrong_item(item)
     else
         self:complete_item_obtained(item, 1)
     end
 end
 
+-- ============================================================
+-- 把玩玩具（随手捡 / 玩具型需求共用，见 PlayingToyState）
+-- ============================================================
+
+-- 捡到玩具：进入把玩状态。轮询命中（_resolve_pickup）与 OBTAIN 事件（manager）会双双到达，
+-- 用状态判重只认第一次。
+---@param item BabyItemRecord
+function BabyAgent:begin_toy_play(item)
+    if self.destroyed or not item or item.done then
+        return
+    end
+    if self:is_in_state(Enum.BabyState.PlayingToy) then
+        return
+    end
+
+    self.pending_item = nil
+    self.pending_purpose = nil
+    self.pickup_target = nil
+    local satisfies = self.services.resolver:item_matches_need(item, self.current_need)
+    self:enter_state(Enum.BabyState.PlayingToy, { item = item, satisfies = satisfies }, true)
+end
+
+-- 玩够了。玩具已由 PlayingToyState:exit 放回地上，这里只决定收尾。
+---@param item BabyItemRecord|nil
+---@param satisfies boolean
+function BabyAgent:finish_toy_play(item, satisfies)
+    if self.destroyed then
+        return
+    end
+
+    -- 冷却：不然放下那一刻 Idle 扫描立刻又把同一件玩具捡回来，宝宝会永远抱着它。
+    self.toy_play_cooldown = true
+    Timer.once(self, self.config.baby.toy_play_cooldown_seconds, function()
+        self.toy_play_cooldown = false
+    end)
+
+    if satisfies and item then
+        -- keep_item：玩具留在场上，不出列也不销毁（与吃掉食物相对）。
+        self:complete_item_obtained(item, 1, true)
+    else
+        self:enter_idle()
+    end
+end
+
+-- 随手捡玩具（与当前需求无关）：只在起身漫游那一刻掷一次骰，由 WanderingState:enter 调用。
+-- 中了就在 toy_pick_radius 内找最近的玩具，照常走 SeekingItem → 拾取 → PlayingToy。
+-- 刻意不做成轮询：轮询会把 30% 反复掷成「迟早必捡」，宝宝就变成见玩具必捡。
+---@param pos Vector3
+---@return boolean
+function BabyAgent:try_pick_toy_for_fun(pos)
+    local baby = self.config.baby
+    if self.toy_play_cooldown then
+        return false
+    end
+    if Rand.int(1, 100) > baby.toy_pick_chance_percent then
+        return false
+    end
+
+    local toy = self.services.item:nearest_playable(pos, baby.toy_pick_radius)
+    if not toy then
+        return false
+    end
+    self:enter_state(Enum.BabyState.SeekingItem, { item = toy, reason = "toy_play" }, true)
+    return true
+end
+
 ---@param item BabyItemRecord
 ---@param count integer|nil
-function BabyAgent:complete_item_obtained(item, count)
+---@param keep_item boolean|nil  -- true=玩具：不出列、不置 done，放下后还能被再次捡起
+function BabyAgent:complete_item_obtained(item, count, keep_item)
     if self.destroyed or not item or item.done then
         return
     end
 
-    item.done = true
+    if not keep_item then
+        item.done = true
+        self.services.item:remove(item)
+    end
     self.pending_item = nil
     self.pending_purpose = nil
     self.pickup_target = nil
     self:select_equipped_slot()
-    self.services.item:remove(item)
     self:cancel_need_countdown()
     Timer.once(self, 1.5, function()
         self.services.task:emit_baby_pick_item(self, item, count or 1)
     end)
-    self:enter_state(Enum.BabyState.Satisfied, { item = item }, true)
+    self:enter_state(Enum.BabyState.Satisfied, { item = item, keep_item = keep_item }, true)
 end
 
 ---不是宝宝想要的物品：捡到手上后丢掉，然后表示不满意
@@ -628,17 +717,7 @@ function BabyAgent:reject_wrong_item(item)
     self:set_status("咦？不是这个…")
 
     Timer.once(self, self.config.baby.reject_hold_delay, function()
-        if item.equipment then
-            -- 装备单位可能已被回收销毁，保留 pcall。
-            pcall(function()
-                if item.equipment.set_droppable then
-                    item.equipment.set_droppable(true)
-                end
-                if item.equipment.drop then
-                    item.equipment.drop()
-                end
-            end)
-        end
+        self.services.item:drop_to_ground(item)
         self:set_status("不要这个！")
 
         Timer.once(self, self.config.baby.reject_throw_delay, function()
@@ -687,11 +766,13 @@ function BabyAgent:finish_facility_satisfied(facility)
 end
 
 ---@param item BabyItemRecord|nil
-function BabyAgent:finish_satisfied(item)
+---@param item BabyItemRecord|nil
+---@param keep_item boolean|nil  -- true=玩具：已原地放下并留在场上，不能吃掉
+function BabyAgent:finish_satisfied(item, keep_item)
     if self.destroyed then
         return
     end
-    if item then
+    if item and not keep_item then
         self.services.item:consume(item)
     end
     self:choose_next_need()

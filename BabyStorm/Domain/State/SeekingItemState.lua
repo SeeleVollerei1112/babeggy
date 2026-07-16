@@ -34,10 +34,18 @@ function SeekingItemState:enter(context)
 
     if agent.pending_purpose == "reject" then
         agent:set_status("捡起来看看")
+    elseif context and context.reason == "toy_play" then
+        -- 随手捡的玩具与当前需求无关，不能套用需求文案（会显示成“去喝奶昔”）。
+        agent:set_status("想玩那个玩具")
     else
         agent:set_status(agent.services.resolver:get_match_text(agent.current_need, item))
     end
-    agent.services.task:emit_delivery(agent, item, context and context.delivery_method or nil)
+    -- 随手捡玩具与当前需求无关，不发投喂/需求事件：emit_delivery 在 delivery_method 缺省时
+    -- 会发 need_matched，每次随手捡都误报一次「需求已匹配」。真正的满足事件仍由
+    -- complete_item_obtained / SatisfiedState 在玩完后发出。
+    if not (context and context.reason == "toy_play") then
+        agent.services.task:emit_delivery(agent, item, context and context.delivery_method or nil)
+    end
 
     self._check_elapsed = 0.0
     self._total_elapsed = 0.0

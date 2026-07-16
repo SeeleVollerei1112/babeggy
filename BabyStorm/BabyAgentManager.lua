@@ -247,6 +247,12 @@ function BabyAgentManager:_on_item_obtained(item, data)
     if not agent then
         return
     end
+    -- 玩具豁免 reject：捡到玩具一律是「玩一会儿再放下」，是不是当前需求只影响收尾
+    -- （与 BabyAgent:_resolve_pickup 同一条规则；两边都会到达，由 begin_toy_play 判重）。
+    if item.def.playable then
+        agent:begin_toy_play(item)
+        return
+    end
     if self.services and self.services.resolver and not self.services.resolver:item_matches_need(item, agent.current_need) then
         -- 拿到了不是宝宝想要的东西：先丢掉，再表示不满意
         agent:reject_wrong_item(item)

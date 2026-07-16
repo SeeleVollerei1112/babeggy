@@ -144,6 +144,22 @@ local Prefab = require("Data.Prefab")
 ---@field pickup_timeout Fixed
 ---@field pickup_move_speed_ratio Fixed
 ---@field satisfied_react_time Fixed
+---@field idle_rest_min_seconds Fixed
+---@field idle_rest_max_seconds Fixed
+---@field wander_min_seconds Fixed
+---@field wander_max_seconds Fixed
+---@field wander_move_speed_ratio Fixed
+---@field wander_point_interval Fixed
+---@field wander_stroll_radius Fixed
+---@field wander_arrive_threshold Fixed
+---@field toy_play_seconds Fixed
+---@field toy_play_move_chance_percent integer
+---@field toy_play_move_speed_ratio Fixed
+---@field toy_play_move_interval Fixed
+---@field toy_play_stroll_radius Fixed
+---@field toy_play_cooldown_seconds Fixed
+---@field toy_pick_chance_percent integer
+---@field toy_pick_radius Fixed
 ---@field need_timeout_min_seconds integer
 ---@field need_timeout_max_seconds integer
 ---@field timeout_action_id integer
@@ -173,6 +189,7 @@ local Prefab = require("Data.Prefab")
 ---@field id string
 ---@field resolver "equipment"|"facility"|"ball_rally"|"rps"
 ---@field item_key integer|nil
+---@field playable boolean|nil  -- 玩具：宝宝可随手捡起把玩（无需求也捡）；豁免 reject，玩完原地放下不销毁
 ---@field item_name string|nil
 ---@field shop_pos Fixed[]|nil  -- 填了就只在这个补给点生成（小卖部货架）；nil = 场地内随机落点
 ---@field facility_id string|nil
@@ -486,6 +503,39 @@ Config.baby = {
     pickup_timeout = 5.0,
     pickup_move_speed_ratio = 2.0,
     satisfied_react_time = 3.0,
+    -- ========== 空闲：站一会儿 ⇄ 漫游一段（IdleState / WanderingState）==========
+    -- 宝宝不再是纯驻留：Idle 站够 idle_rest_* 秒就起身漫游，逛够 wander_* 秒再回 Idle。
+    -- 两个状态都照常扫描当前需求的物品、都能被举起，区别只在动不动。
+    idle_rest_min_seconds = 4.0,
+    idle_rest_max_seconds = 9.0,
+    wander_min_seconds = 6.0,
+    wander_max_seconds = 12.0,
+    wander_move_speed_ratio = 0.7, -- 漫游移速比率（Wander 缺省 0.0＝原地不动，必须显式给）
+    wander_point_interval = 3.0,   -- 漫游多久换一个目标点（秒，必须小数）；同时用作单条移动指令的持续时间
+    -- 就近散步：目标点在宝宝**当前位置**的这个半径内挑，不用场地随机点。
+    -- 用随机点的话目标动辄二三十米开外，几秒一换、宝宝光转身不赶路，看着像原地抽搐。
+    wander_stroll_radius = 8.0,
+    -- 到点判定容错：必须比 patrol_threshold(4.0) 小得多——散步一步才几米，容错 4 米等于还没迈步就算到了。
+    wander_arrive_threshold = 1.0,
+
+    -- ========== 把玩玩具（PlayingToyState）==========
+    -- 宝宝捡到任何 playable 物品都会玩一会儿再放下：正好是当前需求就玩完结算满足，
+    -- 不是（含随手捡的）就玩完回 Idle，不计分也不 Upset。
+    toy_play_seconds = 10.0,           -- 一次把玩多久后放下（秒，必须小数）
+    toy_play_move_chance_percent = 50, -- 把玩时「拿着到处走」的概率，其余原地玩
+    -- 拿着玩具走的幅度：比漫游更欢快（抱着玩具乱跑），所以更快、换点更勤、逛得更开。
+    toy_play_move_speed_ratio = 1.2,
+    toy_play_move_interval = 2.0,
+    toy_play_stroll_radius = 10.0,
+    -- 玩完的冷却：不给的话，刚放下就可能在下一次起身漫游时被同一个宝宝捡回来。
+    toy_play_cooldown_seconds = 15.0,
+
+    -- ========== 随手捡玩具 ==========
+    -- 只在「起身漫游」那一刻掷一次骰（见 WanderingState:enter）：中了就在 toy_pick_radius 内
+    -- 找最近的玩具顺路捡走，没中就老实逛完。
+    -- 刻意不做成「周围有玩具就捡」的轮询——那样宝宝一靠近玩具必捡，而且轮询会把概率放大到几乎必然。
+    toy_pick_chance_percent = 30,
+    toy_pick_radius = 6.0,
     need_timeout_min_seconds = 20,
     need_timeout_max_seconds = 30,
     timeout_action_id = 23,
@@ -573,6 +623,68 @@ Config.needs = {
         matched_text = "去喝气泡水",
         satisfied_text = "喝到气泡水了",
         shop_pos = { -152.665, 3.85, 41.605 },
+    },
+    -- ========== 玩具需求（五种，全部场地内随机落点）==========
+    -- 与食物的唯一差别是不填 shop_pos：ItemService:spawn_for_need 因此走
+    -- arena:random_ground_point()，开局散落在场地各处，玩家得自己找。被宝宝玩掉后
+    -- （consume，restocked=false）在新的随机点补一件，维持场上总量。
+    --
+    -- item_key 取「玩具X_自定义」这条**装备**预设（GameAPI.create_equipment 只认装备 key），
+    -- 不是 Prefab.unit 里同名的场景摆件 key——那两个是不同的编号，填错生成不出来。
+    {
+        id = "toy_bear",
+        resolver = "equipment",
+        item_key = 1073844347, -- 玩具小熊_自定义
+        playable = true,
+        item_name = "玩具小熊",
+        action_text = "小熊",
+        need_text = "想要玩小熊",
+        matched_text = "去玩小熊",
+        satisfied_text = "玩到小熊了",
+    },
+    {
+        id = "toy_star",
+        resolver = "equipment",
+        item_key = 1073815560, -- 玩具星星_自定义
+        playable = true,
+        item_name = "玩具星星",
+        action_text = "星星",
+        need_text = "想要玩星星",
+        matched_text = "去玩星星",
+        satisfied_text = "玩到星星了",
+    },
+    {
+        id = "toy_octopus",
+        resolver = "equipment",
+        item_key = 1073868847, -- 玩具章鱼_自定义
+        playable = true,
+        item_name = "玩具章鱼",
+        action_text = "章鱼",
+        need_text = "想要玩章鱼",
+        matched_text = "去玩章鱼",
+        satisfied_text = "玩到章鱼了",
+    },
+    {
+        id = "toy_crown",
+        resolver = "equipment",
+        item_key = 1073873018, -- 玩具皇冠_自定义
+        playable = true,
+        item_name = "玩具皇冠",
+        action_text = "皇冠",
+        need_text = "想要玩皇冠",
+        matched_text = "去玩皇冠",
+        satisfied_text = "玩到皇冠了",
+    },
+    {
+        id = "toy_fish",
+        resolver = "equipment",
+        item_key = 1073840226, -- 玩具咸鱼_自定义
+        playable = true,
+        item_name = "玩具咸鱼",
+        action_text = "咸鱼",
+        need_text = "想要玩咸鱼",
+        matched_text = "去玩咸鱼",
+        satisfied_text = "玩到咸鱼了",
     },
     {
         -- 顶球玩法需求：由 BallRallyCoordinator 扫描配对（宝宝持此需求且场上有可用沙滩球即开局）。

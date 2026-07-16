@@ -19,6 +19,8 @@ function SatisfiedState:enter(context)
     local item = context and context.item or nil
     local facility = context and context.facility or nil
     local target = item or facility
+    -- 玩具型满足：物品已在 PlayingToyState:exit 原地放下并留在场上，收尾时不能再吃掉它。
+    local keep_item = (context and context.keep_item) and true or false
     agent:cancel_need_countdown()
     agent:set_lift_enabled(false)
     agent:select_equipped_slot()
@@ -58,7 +60,7 @@ function SatisfiedState:enter(context)
         if facility then
             agent:finish_facility_satisfied(facility)
         else
-            agent:finish_satisfied(item)
+            agent:finish_satisfied(item, keep_item)
         end
     end)
 end

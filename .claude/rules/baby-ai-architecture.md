@@ -42,12 +42,18 @@
 - `item` —— 玩家把目标物品送到宝宝身边 / 宝宝去捡。
 - `facility` —— 玩家抱宝宝到设施处放下触发（含玩家绑定型，如滑板）。
 
+物品需求可加 `playable = true`（玩具）：宝宝无需求也会随手捡起把玩，**豁免 reject**
+（捡到不想要的玩具不 Upset），玩完原地放下且不销毁（`keep_item`，与食物的 `consume` 相对）。
+捡到玩具的所有路径统一汇到 `BabyAgent:begin_toy_play`。
+
 ### BehaviorFSM（行为状态，描述目的）
 | 状态 | 目的 | 触发来源 |
 |------|------|----------|
-| Idle | 空闲巡逻 + 扫描就近目标 + 展示需求倒计时 | 初始 / 满足后 / 放下无目标 |
+| Idle | 空闲驻留 + 扫描就近目标 + 展示需求倒计时；站够了起身漫游 | 初始 / 满足后 / 放下无目标 |
+| Wandering | 漫游一段再回 Idle（走走停停）。继承 IdleState，只覆写 `apply_move_intent` / `schedule_next`；**起身那一刻掷一次骰**决定要不要顺路捡玩具 | Idle 站够 `idle_rest_*` 秒 |
 | Carried | 被玩家举着 | `on_lifted_begin` |
 | SeekingItem | 走向并捡起目标物品（含 reject 分支） | 匹配到地面物品 |
+| PlayingToy | 把玩玩具（原地或拿着走），玩完原地放下 | 捡到 `playable` 物品（随手捡 / 玩具型需求共用） |
 | InteractingFacility | 在设施处交互；按 `facility_kind` 装载 Interaction 子状态（Seat/Swing/Vehicle/PlayerBound/Catapult/Crib），子状态可持 Driver | 抱着放到设施处 |
 | PlayRps | 猜拳小游戏（配对→抛骰→顶撞→判分），内部 phase 推进 | RpsCoordinator 扫描配对 |
 | BallRally | 顶球小游戏（发球→顶回→回合循环），内部 phase 推进 | BallRallyCoordinator 扫描配对 |
