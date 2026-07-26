@@ -471,7 +471,7 @@ Enums.AbilityLimitation = {
 	UN_CONTROL = 2,  ---失控
 	JUMP = 4,  ---跳跃
 	DIE = 8,  ---被击败
-	DISABLE_IN_CAST = 16,  ---code_ability_usable_status_disable_in_cast
+	DISABLE_IN_CAST = 16,  ---非施法中
 }
 
 ---@enum Enums.AbilityPointerType 技能指示器类型
@@ -599,6 +599,18 @@ Enums.CameraShakeType = {
 Enums.CampRelationType = {
 	ENEMY = 1,  ---敌对
 	FRIEND = 2,  ---同盟
+}
+
+---@enum Enums.CollisionCategory 碰撞掩码类型
+Enums.CollisionCategory = {
+	STATIC_BODY = 2,  ---静态物体
+	CHARACTER = 4,  ---角色
+	DYNAMIC_BODY = 8,  ---受力物体
+	COMMON_DYNAMIC_GEAR = 16,  ---运动物体
+	TRIGGER = 32,  ---触发区域
+	CREATURE = 8192,  ---生物
+	UGC_VEHICLE = 16384,  ---UGC载具
+	EQUIPMENT = 131072,  ---物品
 }
 
 ---@enum Enums.CollisionLimitType 碰撞限制枚举
@@ -766,6 +778,12 @@ Enums.JointAssistantProperty = {
 	BS_MIN_TWIST_ANGLE = 42,  ---扭转限制最小角度
 	BS_MAX_TWIST_ANGLE = 43,  ---扭转限制最大角度
 	BS_REBALANCE_STIFFNESS = 44,  ---回正强度
+}
+
+---@enum Enums.ListSortType 排序类型
+Enums.ListSortType = {
+	ASC_ORDER = 0,  ---升序
+	DES_ORDER = 1,  ---降序
 }
 
 ---@enum Enums.ModelSocket 部位
@@ -6875,6 +6893,12 @@ TriggerSystem = {}
 ---@return boolean 是否存在
 function TriggerSystem.has_timer(_timer) end
 
+---向全局发送携带单位的自定义事件
+---@param _event_name string 事件
+---@param _unit Unit 携带单位
+---@param _data table? 附带参数
+function TriggerSystem.send_global_custom_event_with_unit(_event_name, _unit, _data) end
+
 ---@class Unit: Actor
 Unit = {}
 
@@ -8188,50 +8212,6 @@ function VirtualEquipment.set_usable(_usable) end
 ---@class EVENT
 EVENT = {}
 
----子弹命中
----事件主体 Ability 技能
----事件回调参数 ability Ability 触发技能
----事件回调参数 unit Unit 技能拥有者
----事件回调参数 target_unit Unit 目标对象
----事件回调参数 dmg Fixed 伤害值
---[[
-LuaAPI.unit_register_trigger_event(_unit, {EVENT.ABILITY_BULLET_HIT, }, function(event_name, actor, data)
-	print(data.ability)
-	print(data.unit)
-	print(data.target_unit)
-	print(data.dmg)
-end)
---]]
-EVENT.ABILITY_BULLET_HIT = "ABILITY_BULLET_HIT"
-
----技能切入
----事件主体 Ability 技能
----事件回调参数 ability Ability 触发技能
----事件回调参数 unit Unit 技能拥有者
----事件回调参数 switch_out_ability Ability 切换前的技能
---[[
-LuaAPI.unit_register_trigger_event(_unit, {EVENT.ABILITY_SWITCH_IN, }, function(event_name, actor, data)
-	print(data.ability)
-	print(data.unit)
-	print(data.switch_out_ability)
-end)
---]]
-EVENT.ABILITY_SWITCH_IN = "ABILITY_SWITCH_IN"
-
----技能切出
----事件主体 Ability 技能
----事件回调参数 ability Ability 触发技能
----事件回调参数 unit Unit 技能拥有者
----事件回调参数 switch_in_ability Ability 切换后的技能
---[[
-LuaAPI.unit_register_trigger_event(_unit, {EVENT.ABILITY_SWITCH_OUT, }, function(event_name, actor, data)
-	print(data.ability)
-	print(data.unit)
-	print(data.switch_in_ability)
-end)
---]]
-EVENT.ABILITY_SWITCH_OUT = "ABILITY_SWITCH_OUT"
-
 ---技能蓄力阶段开始
 ---事件主体 Ability 技能
 ---事件回调参数 ability Ability 触发技能
@@ -8267,6 +8247,22 @@ LuaAPI.unit_register_trigger_event(_unit, {EVENT.ABILITY_ACCUMULATE_END, }, func
 end)
 --]]
 EVENT.ABILITY_ACCUMULATE_END = "ABILITY_ACCUMULATE_END"
+
+---子弹命中
+---事件主体 Ability 技能
+---事件回调参数 ability Ability 触发技能
+---事件回调参数 unit Unit 技能拥有者
+---事件回调参数 target_unit Unit 目标对象
+---事件回调参数 dmg Fixed 伤害值
+--[[
+LuaAPI.unit_register_trigger_event(_unit, {EVENT.ABILITY_BULLET_HIT, }, function(event_name, actor, data)
+	print(data.ability)
+	print(data.unit)
+	print(data.target_unit)
+	print(data.dmg)
+end)
+--]]
+EVENT.ABILITY_BULLET_HIT = "ABILITY_BULLET_HIT"
 
 ---技能施法阶段开始
 ---事件主体 Ability 技能
@@ -8405,6 +8401,34 @@ LuaAPI.unit_register_trigger_event(_unit, {EVENT.ABILITY_SPEC_ANCHOR_STOP, _anch
 end)
 --]]
 EVENT.ABILITY_SPEC_ANCHOR_STOP = "ABILITY_SPEC_ANCHOR_STOP"
+
+---技能切入
+---事件主体 Ability 技能
+---事件回调参数 ability Ability 触发技能
+---事件回调参数 unit Unit 技能拥有者
+---事件回调参数 switch_out_ability Ability 切换前的技能
+--[[
+LuaAPI.unit_register_trigger_event(_unit, {EVENT.ABILITY_SWITCH_IN, }, function(event_name, actor, data)
+	print(data.ability)
+	print(data.unit)
+	print(data.switch_out_ability)
+end)
+--]]
+EVENT.ABILITY_SWITCH_IN = "ABILITY_SWITCH_IN"
+
+---技能切出
+---事件主体 Ability 技能
+---事件回调参数 ability Ability 触发技能
+---事件回调参数 unit Unit 技能拥有者
+---事件回调参数 switch_in_ability Ability 切换后的技能
+--[[
+LuaAPI.unit_register_trigger_event(_unit, {EVENT.ABILITY_SWITCH_OUT, }, function(event_name, actor, data)
+	print(data.ability)
+	print(data.unit)
+	print(data.switch_in_ability)
+end)
+--]]
+EVENT.ABILITY_SWITCH_OUT = "ABILITY_SWITCH_OUT"
 
 ---技能升级
 ---事件主体 Ability 技能
@@ -8899,6 +8923,32 @@ end)
 --]]
 EVENT.SPEC_CHARACTER_SELECT_EQUIPMENT_SLOT = "SPEC_CHARACTER_SELECT_EQUIPMENT_SLOT"
 
+---指定道具被带入游戏
+---事件主体 Default 多类型
+---注册参数 _commodity_id UgcCommodity 商城道具
+---事件回调参数 camp_role_owner Role 携带道具的玩家
+--[[
+LuaAPI.global_register_trigger_event({EVENT.SPEC_COMMODITY_BRING_INTO_GAME, _commodity_id}, function(event_name, actor, data)
+	print(data.camp_role_owner)
+end)
+--]]
+EVENT.SPEC_COMMODITY_BRING_INTO_GAME = "SPEC_COMMODITY_BRING_INTO_GAME"
+
+---指定道具被消耗
+---事件主体 Default 多类型
+---注册参数 _commodity_id UgcCommodity 商城道具
+---事件回调参数 commodity_id UgcCommodity 商城道具
+---事件回调参数 consume_num integer 使用道具的数量
+---事件回调参数 consume_role Role 使用道具的玩家
+--[[
+LuaAPI.global_register_trigger_event({EVENT.SPEC_COMMODITY_CONSUME, _commodity_id}, function(event_name, actor, data)
+	print(data.commodity_id)
+	print(data.consume_num)
+	print(data.consume_role)
+end)
+--]]
+EVENT.SPEC_COMMODITY_CONSUME = "SPEC_COMMODITY_CONSUME"
+
 ---指定道具被获取
 ---事件主体 Default 多类型
 ---注册参数 _commodity_id UgcCommodity 商城道具
@@ -8913,6 +8963,21 @@ LuaAPI.global_register_trigger_event({EVENT.SPEC_COMMODITY_OBTAIN, _commodity_id
 end)
 --]]
 EVENT.SPEC_COMMODITY_OBTAIN = "SPEC_COMMODITY_OBTAIN"
+
+---指定道具被购买
+---事件主体 Default 多类型
+---注册参数 _commodity_id UgcCommodity 商城道具
+---事件回调参数 commodity_id UgcCommodity 商城道具
+---事件回调参数 purchase_role Role 购买道具的玩家
+---事件回调参数 purchase_num integer 购买数量
+--[[
+LuaAPI.global_register_trigger_event({EVENT.SPEC_COMMODITY_PURCHASE, _commodity_id}, function(event_name, actor, data)
+	print(data.commodity_id)
+	print(data.purchase_role)
+	print(data.purchase_num)
+end)
+--]]
+EVENT.SPEC_COMMODITY_PURCHASE = "SPEC_COMMODITY_PURCHASE"
 
 ---指定生物互动按钮被按下
 ---事件主体 Creature 生物

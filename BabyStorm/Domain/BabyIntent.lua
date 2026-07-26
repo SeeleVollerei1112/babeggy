@@ -6,7 +6,7 @@ local BabyIntent = {}
 ---@enum BabyMoveMode
 BabyIntent.MoveMode = {
     Stop = "Stop",                 -- 停在原地，不发任何移动指令
-    Wander = "Wander",             -- 巡逻：MovementSystem 自行挑随机点
+    Wander = "Wander",             -- 随机点巡逻；可通过 wander_params 定制玩具/小游戏的局部走位
     MoveToTarget = "MoveToTarget", -- 走向 agent.move_target（坐标）
     PickupTarget = "PickupTarget", -- 走向并捡起 agent.pickup_target（装备）
     Carried = "Carried",           -- 被举起：引擎驱动，逻辑不主动移动

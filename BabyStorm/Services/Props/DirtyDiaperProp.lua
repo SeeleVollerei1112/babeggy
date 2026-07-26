@@ -2,6 +2,7 @@ local Class = require("BaseClass")
 local Timer = require("BabyStorm.Core.Timer")
 local Rand = require("Util.Rand")
 local MathX = require("Util.MathX")
+local UnitUtil = require("Util.UnitUtil")
 local Log = require("Util.Log")
 
 local TWO_PI = 6.2831853
@@ -16,6 +17,7 @@ local TWO_PI = 6.2831853
 -- 落地后尿布就趴在那儿——引擎会在触地那一帧把组件速度整个清零（实测落地前一帧还有 4.57m/s，
 -- 下一帧三个分量全为 0、位置只挪 3mm），所以它自己不会滚，赃物全靠玩家去踢/搬它带出来。
 ---@class BabyDiaperPile
+---@field diaper Obstacle|Unit|nil
 ---@field units (Obstacle|Unit)[]
 ---@field track_handle TimerHandle|nil
 ---
@@ -77,7 +79,7 @@ function DirtyDiaperProp:throw_from(role)
     end
 
     ---@type BabyDiaperPile
-    local pile = { units = { diaper }, track_handle = nil }
+    local pile = { diaper = diaper, units = { diaper }, track_handle = nil }
     self._piles[#self._piles + 1] = pile
     self:_trim_piles()
     self:_kick(diaper, self:_throw_dir(player))
@@ -279,6 +281,92 @@ end
 -- 回收
 -- ============================================================
 
+---@param target Unit|nil
+---@return boolean
+function DirtyDiaperProp:is_cleanable(target)
+    if not target then
+        return false
+    end
+    for pile_index = 1, #self._piles do
+        local pile = self._piles[pile_index]
+        for unit_index = 1, #pile.units do
+            if UnitUtil.same_unit(pile.units[unit_index], target) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+---精确清除接触到的一块：尿布本体被清除时停止继续盖贴花；已有贴花保留待扫。
+---@param target Unit|nil
+---@return boolean
+function DirtyDiaperProp:clean_unit(target)
+    if not target then
+        return false
+    end
+    for pile_index = #self._piles, 1, -1 do
+        local pile = self._piles[pile_index]
+        for unit_index = #pile.units, 1, -1 do
+            if UnitUtil.same_unit(pile.units[unit_index], target) then
+                self:_clean_unit_at(pile, unit_index)
+                if #pile.units == 0 then
+                    table.remove(self._piles, pile_index)
+                end
+                Log.info("dirty diaper mess cleaned by robot")
+                return true
+            end
+        end
+    end
+    return false
+end
+
+---清除机器人清洁半径内的尿布/贴花。贴花是无碰撞 Decoration，只能用距离传感清理。
+---@param center Vector3|nil
+---@param radius Fixed
+---@return integer
+function DirtyDiaperProp:clean_near(center, radius)
+    if not center then
+        return 0
+    end
+    local radius_squared = radius * radius
+    local cleaned = 0
+
+    for pile_index = #self._piles, 1, -1 do
+        local pile = self._piles[pile_index]
+        for unit_index = #pile.units, 1, -1 do
+            local unit = pile.units[unit_index]
+            local ok, pos = pcall(function() return unit.get_position() end)
+            if not ok then
+                self:_clean_unit_at(pile, unit_index)
+            elseif pos and UnitUtil.distance_xz_sq(center, pos) <= radius_squared then
+                self:_clean_unit_at(pile, unit_index)
+                cleaned = cleaned + 1
+            end
+        end
+        if #pile.units == 0 then
+            table.remove(self._piles, pile_index)
+        end
+    end
+
+    if cleaned > 0 then
+        Log.info("dirty diaper mess cleaned by robot", cleaned)
+    end
+    return cleaned
+end
+
+---@param pile BabyDiaperPile
+---@param unit_index integer
+function DirtyDiaperProp:_clean_unit_at(pile, unit_index)
+    local unit = pile.units[unit_index]
+    if UnitUtil.same_unit(unit, pile.diaper) then
+        self:_finish_track(pile)
+        pile.diaper = nil
+    end
+    pcall(function() GameAPI.destroy_unit(unit) end)
+    table.remove(pile.units, unit_index)
+end
+
 ---场上最多留 max_piles 坨，超出销毁最早的那坨（尿布 + 它带出的所有贴花）——
 ---一局里可以反复换洗，不清会无限堆组件。
 function DirtyDiaperProp:_trim_piles()
@@ -299,6 +387,7 @@ function DirtyDiaperProp:_destroy_pile(pile)
         pcall(function() GameAPI.destroy_unit(unit) end)
     end
     pile.units = {}
+    pile.diaper = nil
 end
 
 function DirtyDiaperProp:destroy()

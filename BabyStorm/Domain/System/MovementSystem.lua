@@ -2,21 +2,18 @@ local Class = require("BaseClass")
 local Intent = require("BabyStorm.Domain.BabyIntent")
 local Timer = require("BabyStorm.Core.Timer")
 local Rand = require("Util.Rand")
-local Log = require("Util.Log")
 
 -- 移动系统：全工程**唯一**真正改变宝宝位置 / 下发移动指令 / 开关 AI 的地方。
 -- 行为层只写 agent.move_mode（+ move_target / pickup_target / wander_params）。
 --
 -- 运作模型（事件驱动）：
 --   invalidate()   立即按当前 move_mode / action_lock 对齐（意图变更的唯一入口）。
---   周期性动作（巡逻换点、速度重申）挂 Timer，模式退出/锁定时取消。
+--   周期性动作（随机点换点、速度重申）挂 Timer，模式退出/锁定时取消。
 --
 -- 行为对照（保持历史行为）：
 --   Stop         停在原地。
---   Wander       巡逻：进入时立刻发第一个巡逻点，之后每 interval 换一个点。
---                参数缺省时 move_speed 比率被压成 0，宝宝实际几乎不位移（Idle 的驻留就靠这个缺省）。
---                要真位移必须经 wander_params 显式给 speed_ratio：漫游（WanderingState）、
---                拿着玩具乱跑（PlayingToyState）、猜拳配对小步挪动都是这么做的。
+--   Wander       无参数时严格复用漫游功能引入前的普通随机点巡逻；
+--                有参数时用于玩具乱跑、猜拳配对小步挪动等特殊流程。
 --   PickupTarget 朝 agent.pickup_target（装备）寻路并拾取，速度比率提到 pickup_move_speed_ratio。
 --   MoveToTarget 朝 agent.move_target（坐标）移动（预留）。
 --   Carried      被举起：引擎驱动，逻辑层不发任何移动指令。
@@ -28,9 +25,9 @@ local Log = require("Util.Log")
 ---@class BabyWanderParams
 ---@field anchor Vector3|nil      -- 巡逻锚点；nil 时用 arena:random_point()
 ---@field radius Fixed|nil        -- 与 anchor 搭配：巡逻点 = anchor 的 x/z 各偏移 ±radius（小步挪动语义）
----@field speed_ratio Fixed|nil   -- 移速比率；缺省 0.0（原地驻留，既有设计）
+---@field speed_ratio Fixed|nil   -- 参数化 Wander 的移速比率；缺省 0.0
 ---@field interval Fixed|nil      -- 换点间隔；缺省 config.baby.patrol_interval
----@field threshold Fixed|nil     -- 到点判定阈值；缺省 config.baby.patrol_threshold
+---@field threshold Fixed|nil     -- 参数化 Wander 的到点阈值；缺省 config.baby.ai_move_threshold
 
 -- PickupTarget 期间重申速度比率的间隔：锁解除时 ActionLock 会把 move_speed 恢复成 1.0，
 -- 若不周期性重申，取物速度会被悄悄抹掉（原来是每帧重申）。
@@ -99,19 +96,19 @@ function MovementSystem:_enter_mode(unit, mode)
 end
 
 -- ============================================================
--- Wander：进入时立刻发第一个巡逻点，之后 Timer 周期换点。
+-- Wander：普通态走旧版巡逻；有 wander_params 时走参数化的特殊随机走位。
 -- ============================================================
 
 ---@private
 ---@param unit Unit|LifeEntity
 function MovementSystem:_begin_wander(unit)
-    local params = self._agent.wander_params or {}
-    local interval = params.interval or self._agent.config.baby.patrol_interval
-    -- 必须先开 AI 再发巡逻指令，同 _begin_pickup：Stop 模式与 ActionLock 都会 stop_ai，
-    -- 而解锁/退出 Stop 都不会自动 start_ai（见本文件「语义动作接口」处的引擎坑位说明），
-    -- 漏了这一句，start_move_to_pos_with_threshold 会静默失效、宝宝站着不动。
-    -- 历史上没暴露：Idle 的巡逻速度比率是 0，指令失效和速度为 0 看起来一模一样。
-    unit.start_ai()
+    local params = self._agent.wander_params
+    local interval = (params and params.interval) or self._agent.config.baby.patrol_interval
+    -- 普通 Idle 没有参数：严格保留漫游功能引入前的行为，不额外 start_ai。
+    -- 玩具/小游戏有参数：保留当前已由引擎验证正常的显式启用 AI 路径。
+    if params then
+        unit.start_ai()
+    end
     self:_command_wander_point(unit)
     self._wander_timer = Timer.every(self, interval, function()
         local cur = self._agent.unit
@@ -125,21 +122,29 @@ end
 ---@param unit Unit|LifeEntity
 function MovementSystem:_command_wander_point(unit)
     local agent = self._agent
-    local params = agent.wander_params or {}
-    -- 缺省巡逻速度压成 0：宝宝原地驻留，仅保留朝向/巡逻指令语义（既有设计）。
+    local params = agent.wander_params
+
+    -- 普通态：逐项复原 97cdfd3 父提交中的实现。这里的 0.0 / 4.0 / 0.5
+    -- 是经过引擎实际表现验证的项目语义，不按通用 API 直觉重新解释。
+    if not params then
+        self:_set_speed(unit, 0.0)
+        local target = self:_make_wander_target(unit, {})
+        if target then
+            unit.start_move_to_pos_with_threshold(
+                target,
+                agent.config.baby.patrol_threshold,
+                0.5
+            )
+        end
+        return
+    end
+
     self:_set_speed(unit, params.speed_ratio or 0.0)
     local target = self:_make_wander_target(unit, params)
     if target then
-        -- 引擎签名是 (目标点, 持续时间, 容错距离)（见 EggyAPI.lua）。历史写法是
-        -- (target, threshold, 0.5)——把「容错距离」塞进了「持续时间」，实参顺序反了。
-        -- 持续时间给满一个换点周期，宝宝才会一路走到下次换点；给 0.5 就是走半秒站着等。
+        -- 参数化路径保持玩具/小游戏目前已验证正常的实参语义。
         local duration = params.interval or agent.config.baby.patrol_interval
-        local threshold = params.threshold or agent.config.baby.patrol_threshold
-        -- TODO(调试): 临时诊断「拿到玩具后站着不动」，确认修好后删除。
-        local from = unit.get_position and unit.get_position()
-        Log.info("wander cmd baby", agent.index, "speed", params.speed_ratio or 0.0,
-            "from", from and from.x, from and from.z, "to", target.x, target.z,
-            "dur", duration, "th", threshold)
+        local threshold = params.threshold or agent.config.baby.ai_move_threshold
         unit.start_move_to_pos_with_threshold(target, duration, threshold)
     end
 end
@@ -147,8 +152,7 @@ end
 -- 巡逻点选取：
 --   * 给了 radius = 「就近散步」，在半径内挑点（x/z 各偏 ±radius）。锚点缺省用宝宝**当前位置**
 --     （走到哪从哪继续逛，是漫游/抱着玩具乱跑的语义）；猜拳配对那种要钉住原地的自己传 anchor。
---   * 都没给 = 场地随机点（y 用当前高度）。注意这种点动辄二三十米开外，配上几秒一次的换点，
---     宝宝会光转身不赶路、看着像原地抽搐——要真散步就给 radius。
+--   * 都没给 = 场地区域随机点（y 用当前高度），供小游戏等特殊流程使用。
 ---@private
 ---@param unit Unit|LifeEntity
 ---@param params BabyWanderParams
@@ -206,9 +210,8 @@ end
 ---@param target Vector3|nil
 function MovementSystem:_command_move_to(unit, target)
     if target then
-        -- 同 _command_wander_point：引擎签名是 (目标点, 持续时间, 容错距离)。
-        local baby = self._agent.config.baby
-        unit.start_move_to_pos_with_threshold(target, baby.patrol_interval, baby.patrol_threshold)
+        -- 同漫游功能引入前的实现，保留原实参。
+        unit.start_move_to_pos_with_threshold(target, self._agent.config.baby.patrol_threshold, 0.5)
     end
 end
 

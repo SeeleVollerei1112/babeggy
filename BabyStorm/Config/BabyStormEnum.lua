@@ -22,7 +22,6 @@ Enum.BabyState = {
     PlayRps = 8,    -- 猜拳小游戏（配对→抛骰→顶撞→判分，由 RpsCoordinator 触发）
     BallRally = 9,  -- 顶球小游戏（发球→玩家顶回→回合循环，由 BallRallyCoordinator 触发）
     PlayingToy = 10, -- 把玩玩具（捡到玩具玩一会儿再放下；有需求则玩完结算满足）
-    Wandering = 11,  -- 漫游：Idle 站够了起身逛一段，逛够了回 Idle（起身那一刻掷骰决定要不要顺路捡玩具）
 }
 
 ---@type table<integer, string>
@@ -37,7 +36,6 @@ Enum.StateName = {
     [Enum.BabyState.PlayRps] = "PlayRps",
     [Enum.BabyState.BallRally] = "BallRally",
     [Enum.BabyState.PlayingToy] = "PlayingToy",
-    [Enum.BabyState.Wandering] = "Wandering",
 }
 
 ---@param state_id integer

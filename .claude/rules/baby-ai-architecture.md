@@ -49,8 +49,7 @@
 ### BehaviorFSM（行为状态，描述目的）
 | 状态 | 目的 | 触发来源 |
 |------|------|----------|
-| Idle | 空闲驻留 + 扫描就近目标 + 展示需求倒计时；站够了起身漫游 | 初始 / 满足后 / 放下无目标 |
-| Wandering | 漫游一段再回 Idle（走走停停）。继承 IdleState，只覆写 `apply_move_intent` / `schedule_next`；**起身那一刻掷一次骰**决定要不要顺路捡玩具 | Idle 站够 `idle_rest_*` 秒 |
+| Idle | 平常态：持续运行漫游功能引入前的场地随机点巡逻 + 扫描就近目标 + 展示需求倒计时；低频掷骰决定是否顺路捡玩具 | 初始 / 满足后 / 放下无目标 |
 | Carried | 被玩家举着 | `on_lifted_begin` |
 | SeekingItem | 走向并捡起目标物品（含 reject 分支） | 匹配到地面物品 |
 | PlayingToy | 把玩玩具（原地或拿着走），玩完原地放下 | 捡到 `playable` 物品（随手捡 / 玩具型需求共用） |
@@ -62,7 +61,7 @@
 | Cry（原 Timeout） | 需求超时哭闹 + 补救窗口 + 概率拒绝抱起 | 需求倒计时归零 |
 
 ### MovementSystem（移动模式）
-`Stop` / `Wander`（巡逻随机点）/ `MoveToTarget`（物品或设施）/ `Carried`（被举起，引擎驱动，逻辑不主动移动）。
+`Stop` / `Wander`（无参数时为旧版普通随机点巡逻；带参数时为玩具与小游戏的特殊随机走位）/ `MoveToTarget`（物品或设施）/ `Carried`（被举起，引擎驱动，逻辑不主动移动）。
 
 ### AnimationSystem
 - `anim_base`：`Idle` / `Locomotion` / `Pickup` / `Cry` / `Happy` / `CarriedPose` / `Ride`。
@@ -87,7 +86,7 @@
 
 ```lua
 ---@class BabyBehaviorIntent
----@field move_mode    "Stop"|"Wander"|"MoveToTarget"|"Carried"
+---@field move_mode    "Stop"|"Wander"|"MoveToTarget"|"PickupTarget"|"Carried"|"Scripted"
 ---@field anim_base    string   -- Idle / Locomotion / Pickup / Cry / Happy / CarriedPose / Ride
 ---@field anim_overlay string|nil
 ---@field action_lock  boolean  -- true = 当前为不可打断动作，停移动、等 ActionFinished

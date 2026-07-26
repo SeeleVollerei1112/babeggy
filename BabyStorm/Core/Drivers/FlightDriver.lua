@@ -20,6 +20,8 @@ local MathX = require("Util.MathX")
 ---@field hang Fixed|nil              -- ease_out_in 中段悬停 [0,1](沙滩球用)
 ---@field ease "out_in"|"out"|nil     -- 默认 "out_in";"out" = 纯减速(骰子垂直上抛)
 ---@field frames integer|nil          -- 驱动步长(逻辑帧),默认 1(30fps)
+---@field position_mode "smooth"|"direct"|nil -- 默认 smooth；逐帧精确轨迹用 direct，避免重复启动平滑插值
+---@field on_step fun(pos: Vector3, elapsed: Fixed, progress: Fixed, dt: Fixed)|nil
 ---@field on_complete fun()|nil       -- 进度首次到 1.0 时回调一次(已自动 stop)
 
 local FRAME_DT = 1.0 / 30.0
@@ -40,9 +42,10 @@ function FlightDriver:start(spec)
     self._spec = spec
     self._elapsed = 0.0
     local frames = spec.frames or 1
+    local step_dt = frames * FRAME_DT
     Timer.every_frame(self, frames, function()
-        self._elapsed = self._elapsed + frames * FRAME_DT
-        self:_step()
+        self._elapsed = self._elapsed + step_dt
+        self:_step(step_dt)
     end)
 end
 
@@ -57,7 +60,8 @@ function FlightDriver:is_active()
 end
 
 ---@private
-function FlightDriver:_step()
+---@param step_dt Fixed
+function FlightDriver:_step(step_dt)
     local spec = self._spec
     if not spec then
         return
@@ -87,12 +91,23 @@ function FlightDriver:_step()
     -- pcall 豁免理由:球/骰子可被玩家丢出世界边界而被引擎销毁,飞行中途单位可能失效。
     local unit = spec.unit
     pcall(function()
-        if unit.set_position_smooth then
+        if spec.position_mode == "direct" then
+            unit.set_position(pos)
+        elseif unit.set_position_smooth then
             unit.set_position_smooth(pos)
         else
             unit.set_position(pos)
         end
     end)
+
+    if spec.on_step then
+        spec.on_step(pos, self._elapsed, s, step_dt)
+    end
+    -- on_step 可能切换 phase 并启动下一段飞行，或让状态 exit 停掉本驱动；
+    -- 此时旧轨迹不得继续执行完成回调，更不能 stop 掉刚启动的新轨迹。
+    if self._spec ~= spec then
+        return
+    end
 
     if s >= 1.0 then
         local on_complete = spec.on_complete

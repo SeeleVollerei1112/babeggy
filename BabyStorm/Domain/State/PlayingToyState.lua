@@ -3,7 +3,6 @@ local StateBase = require("BabyStorm.Domain.State.StateBase")
 local Intent = require("BabyStorm.Domain.BabyIntent")
 local Timer = require("BabyStorm.Core.Timer")
 local Rand = require("Util.Rand")
-local Log = require("Util.Log")
 
 -- 把玩玩具：捡到玩具后玩一会儿（原地或拿着到处走）再放下。
 --
@@ -51,12 +50,8 @@ function PlayingToyState:enter(context)
     end
 
     -- 一半概率拿着玩具到处跑，一半原地玩。
-    -- Wander 的缺省 speed_ratio 是 0.0（原地驻留，既有设计），要真走必须显式给比率；
-    -- 换点间隔也要显式给，否则落回 patrol_interval(4s)，10 秒内只换两个点，看着像没怎么动。
+    -- 把玩时使用局部随机点，因此显式给速度、换点间隔和活动半径。
     local roam = Rand.int(1, 100) <= baby.toy_play_move_chance_percent
-    -- TODO(调试): 临时诊断「拿到玩具后站着不动」，定位完删除。
-    Log.info("baby", agent.index, "toy play branch", roam and "ROAM" or "STAND",
-        "speed", baby.toy_play_move_speed_ratio, "locked", agent.action_lock:is_locked())
     if roam then
         self:set_intent({
             move_mode = Intent.MoveMode.Wander,
@@ -66,9 +61,9 @@ function PlayingToyState:enter(context)
             wander = {
                 speed_ratio = baby.toy_play_move_speed_ratio,
                 interval = baby.toy_play_move_interval,
-                -- 同漫游：锚点用当前位置就近逛，只是逛得更开、更快。
+                -- 锚点用当前位置就近逛。
                 radius = baby.toy_play_stroll_radius,
-                threshold = baby.wander_arrive_threshold,
+                threshold = baby.local_wander_arrive_threshold,
             },
         })
     else

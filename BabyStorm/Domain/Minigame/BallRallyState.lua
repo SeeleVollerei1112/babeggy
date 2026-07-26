@@ -46,7 +46,6 @@ function BallRallyState:enter(context)
     self._prompt_shown = false
     self._indicator_sfx_id = nil
     self._player_hits = 0
-    self._phase_elapsed = 0.0
     self._rally_max = Rand.int(self.cfg.rally_max_min, self.cfg.rally_max_max)
 
     agent:cancel_need_countdown()
@@ -74,28 +73,11 @@ function BallRallyState:handle_event(event)
             self:_launch_to_player()
         end
     elseif event.type == "player_jump" then
-        -- 玩家起跳只负责“开窗”；是否顶到由落点盒判定（见 _try_player_volley）。
+        -- 玩家起跳只负责“开窗”；是否顶到由 FlightDriver 的逐帧轨迹回调判定。
         if self.phase == "to_player" and UnitUtil.same_unit(event.unit, self._player) then
             self._jump_window = self.cfg.jump_hit_window
             Log.info("ball rally player jump armed")
         end
-    end
-end
-
----@param dt Fixed
-function BallRallyState:update(dt)
-    if self._jump_window > 0.0 then
-        self._jump_window = self._jump_window - dt
-        if self._jump_window < 0.0 then
-            self._jump_window = 0.0
-        end
-    end
-    self._phase_elapsed = self._phase_elapsed + dt
-
-    if self.phase == "to_player" then
-        self:_update_to_player(dt)
-    elseif self.phase == "to_baby" then
-        self:_update_to_baby(dt)
     end
 end
 
@@ -190,7 +172,6 @@ function BallRallyState:_launch_to_player()
     self:_begin_flight(start)
 
     self.phase = "to_player"
-    self._phase_elapsed = 0.0
     self._jump_window = 0.0
     self._prompt_shown = false
     Log.info(
@@ -200,44 +181,40 @@ function BallRallyState:_launch_to_player()
     )
 end
 
----@param dt Fixed
-function BallRallyState:_update_to_player(dt)
-    self:_show_landing_marker(false)
+---@param ball_pos Vector3
+---@param flight_elapsed Fixed
+---@param step_dt Fixed
+function BallRallyState:_update_to_player_frame(ball_pos, flight_elapsed, step_dt)
+    if self._jump_window > 0.0 then
+        self._jump_window = self._jump_window - step_dt
+        if self._jump_window < 0.0 then
+            self._jump_window = 0.0
+        end
+    end
 
-    local remaining = self._flight_duration - self._phase_elapsed
+    local remaining = self._flight_duration - flight_elapsed
     if not self._prompt_shown and remaining <= self.cfg.jump_prompt_lead then
         self._prompt_shown = true
         self:_show_tip("跳！顶球！", 1.0)
         Log.info("ball rally jump prompt")
     end
 
-    if self:_ball_out_of_bounds() then
+    if self:_ball_out_of_bounds(ball_pos) then
         self:_settle("球出界，本轮结束")
         return
     end
 
     -- 球落入落点盒 + 玩家处于起跳窗口 → 顶回宝宝（容错优先于物理精确）。
-    if self:_try_player_volley() then
-        return
-    end
-
-    -- 球已落到地面仍未顶到，或超过宽限时间 → 玩家漏接 → 本局结束（算满足，按已顶次数计分）。
-    local ball_pos = self._prop:position(self._ball)
-    if ball_pos and ball_pos.y <= self.cfg.floor_y + self.cfg.ball_ground_origin_offset + 0.15 then
-        self:_settle("没顶到，本轮结束！")
-        return
-    end
-    if self._phase_elapsed >= self._flight_duration + self.cfg.miss_grace then
-        self:_settle("没顶到，本轮结束！")
-    end
+    self:_try_player_volley(ball_pos)
 end
 
+---@param ball_pos Vector3|nil
 ---@return boolean true 表示已顶回，调用方应立即 return
-function BallRallyState:_try_player_volley()
+function BallRallyState:_try_player_volley(ball_pos)
     if self._jump_window <= 0.0 or not self._target then
         return false
     end
-    local ball_pos = self._prop:position(self._ball)
+    ball_pos = ball_pos or self._prop:position(self._ball)
     if not ball_pos then
         return false
     end
@@ -271,9 +248,10 @@ function BallRallyState:_xz_within(a, b, radius)
     return dx * dx + dz * dz <= radius * radius
 end
 
+---@param pos Vector3|nil
 ---@return boolean
-function BallRallyState:_ball_out_of_bounds()
-    local pos = self._prop:position(self._ball)
+function BallRallyState:_ball_out_of_bounds(pos)
+    pos = pos or self._prop:position(self._ball)
     if not pos then
         return true
     end
@@ -312,7 +290,6 @@ function BallRallyState:_launch_to_baby()
     self:_begin_flight(start)
 
     self.phase = "to_baby"
-    self._phase_elapsed = 0.0
     self._jump_window = 0.0
     self.agent:set_status("第 " .. tostring(self._player_hits) .. " 次，球来啦！")
     self:_show_tip("顶到了！x" .. tostring(self._player_hits), 1.0)
@@ -324,33 +301,38 @@ function BallRallyState:_launch_to_baby()
     )
 end
 
----@param dt Fixed
-function BallRallyState:_update_to_baby(dt)
-    if self:_ball_out_of_bounds() then
+---@param ball_pos Vector3
+function BallRallyState:_update_to_baby_frame(ball_pos)
+    if self:_ball_out_of_bounds(ball_pos) then
         self:_settle("回球出界，本轮结束")
         return
     end
 
-    local ball_pos = self._prop:position(self._ball)
     local baby_pos = self.agent.unit.get_position()
     if not (ball_pos and baby_pos) then
         self:_settle("接球失败，本轮结束")
-        return
     end
+end
 
-    -- 回球目标在玩家顶回那一刻已经锁定；接球点固定，不随宝宝动作上漂。
-    -- 不在落地前提前做动作：宝宝的“举起接球”由 _resolve_baby_contact -> _begin_hold 在球到手那刻完成（可见）。
-    local catch_pos = self._target or math.Vector3(baby_pos.x, baby_pos.y + self.cfg.catch_height, baby_pos.z)
-    local catch_radius_sq = self.cfg.catch_radius * self.cfg.catch_radius
-
-    if self._phase_elapsed >= self._flight_duration - 0.2
-        and UnitUtil.distance_sq(ball_pos, catch_pos) <= catch_radius_sq then
-        self:_resolve_baby_contact()
-        return
+-- FlightDriver 是沙滩球飞行期间的唯一时钟。轨迹位置与玩法传感在同一个 frame 回调中推进，
+-- 不再让 0.1s 的行为 tick 用另一份 elapsed 抢先结束飞行。
+---@param ball_pos Vector3
+---@param flight_elapsed Fixed
+---@param progress Fixed
+---@param step_dt Fixed
+function BallRallyState:_on_flight_step(ball_pos, flight_elapsed, progress, step_dt)
+    if self.phase == "to_player" then
+        self:_update_to_player_frame(ball_pos, flight_elapsed, step_dt)
+    elseif self.phase == "to_baby" then
+        self:_update_to_baby_frame(ball_pos)
     end
+end
 
-    -- 兜底：到达预定时刻后即便位置判定差一点，也让宝宝完成这次接球。
-    if self._phase_elapsed >= self._flight_duration + 0.4 then
+-- 只有 FlightDriver 的 frame 进度真正到达 1.0，才允许结束本段轨迹。
+function BallRallyState:_on_flight_complete()
+    if self.phase == "to_player" then
+        self:_settle("没顶到，本轮结束！")
+    elseif self.phase == "to_baby" then
         self:_resolve_baby_contact()
     end
 end
@@ -397,9 +379,9 @@ end
 -- 共享：运动学飞行 / 落点选择 / 落点标记 / 提示 / 收尾。
 -- ============================================================
 
--- 开始一段运动学飞行：弧高随本次水平投掷距离缩放（远→高、近→低，看起来更自然），
--- 位移全程交给 FlightDriver 参数化弧线控制，不需要 on_complete——落地/漏接由 update
--- 传感判定，飞完球停在落点等判定，与原 `_drive_ball_kinematic` 的 s=1 钉在 target 等价。
+-- 开始一段运动学飞行：弧高随本次水平投掷距离缩放（远→高、近→低，看起来更自然）。
+-- 位移、传感和完成判定全部共享 FlightDriver 的逐帧时钟；逐帧轨迹直接 set_position，
+-- 不再每帧重启 set_position_smooth 的内部插值。
 ---@param start_pos Vector3
 function BallRallyState:_begin_flight(start_pos)
     local cfg = self.cfg
@@ -420,6 +402,14 @@ function BallRallyState:_begin_flight(start_pos)
         arc_peak = arc_peak,
         hang = cfg.flight_hang,
         ease = "out_in",
+        frames = 1,
+        position_mode = "direct",
+        on_step = function(pos, elapsed, progress, dt)
+            self:_on_flight_step(pos, elapsed, progress, dt)
+        end,
+        on_complete = function()
+            self:_on_flight_complete()
+        end,
     })
 end
 

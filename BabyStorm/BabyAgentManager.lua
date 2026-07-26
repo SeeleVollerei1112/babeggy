@@ -320,6 +320,11 @@ function BabyAgentManager:destroy()
     Log.info("manager destroyed")
 end
 
+---@return DirtyDiaperProp|nil
+function BabyAgentManager:get_dirty_diaper_service()
+    return self.services and self.services.dirty_diaper or nil
+end
+
 ---@return BabyStormDebugSnapshot
 function BabyAgentManager:get_debug_snapshot()
     local snapshot = {

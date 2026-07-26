@@ -230,9 +230,7 @@ function BabyAgent:_start_need_countdown(seconds)
             if self.destroyed then
                 return
             end
-            -- Wandering 与 Idle 同为“空闲”，漫游时倒计时气泡也要照常刷新，不然一起身就卡住不动。
             if self:is_in_state(Enum.BabyState.Idle)
-                or self:is_in_state(Enum.BabyState.Wandering)
                 or self:is_in_state(Enum.BabyState.Carried) then
                 self:set_status(self:_format_need_countdown(remaining))
             end
@@ -378,8 +376,6 @@ function BabyAgent:_new_state(state_id)
     local cls
     if state_id == Enum.BabyState.Idle then
         cls = require("BabyStorm.Domain.State.IdleState")
-    elseif state_id == Enum.BabyState.Wandering then
-        cls = require("BabyStorm.Domain.State.WanderingState")
     elseif state_id == Enum.BabyState.Carried then
         cls = require("BabyStorm.Domain.State.CarriedState")
     elseif state_id == Enum.BabyState.SeekingItem then
@@ -515,7 +511,7 @@ function BabyAgent:on_lifted_end(data)
     local wrong = self.services.item:nearest_to(pos)
     -- 玩具不参与「放下即捡」：玩家把宝宝抱到不匹配的玩具旁放下时什么都不该发生——
     -- 不捡、不表现、不切状态，就当没看见（照常回 Idle 举需求气泡）。
-    -- 宝宝自己想玩玩具只发生在起身漫游那一刻（见 try_pick_toy_for_fun），不受玩家摆布。
+    -- 宝宝自己想玩玩具由 IdleState 的低频兴趣检查触发，不受玩家摆布。
     if wrong and wrong.def.playable then
         wrong = nil
     end
@@ -645,9 +641,9 @@ function BabyAgent:finish_toy_play(item, satisfies)
     end
 end
 
--- 随手捡玩具（与当前需求无关）：只在起身漫游那一刻掷一次骰，由 WanderingState:enter 调用。
--- 中了就在 toy_pick_radius 内找最近的玩具，照常走 SeekingItem → 拾取 → PlayingToy。
--- 刻意不做成轮询：轮询会把 30% 反复掷成「迟早必捡」，宝宝就变成见玩具必捡。
+-- 随手捡玩具（与当前需求无关）：由 IdleState 按较长随机间隔触发一次概率检查。
+-- 中了就在 toy_pick_radius 内找最近的玩具，照常走 SeekingItem → 拾取 → PlayingToy；
+-- 不放进 0.1s update 轮询，避免概率被快速放大成“见玩具必捡”。
 ---@param pos Vector3
 ---@return boolean
 function BabyAgent:try_pick_toy_for_fun(pos)

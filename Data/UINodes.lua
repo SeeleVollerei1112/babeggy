@@ -7,5 +7,6 @@ return {
 	launcher_btn = "1519736575|2135568399" --[[@as EButton]],
 	prgress_bar_btn = "1519736575|1255000229" --[[@as EButton]],
 	progress_bar = "1519736575|1425636654" --[[@as EProgressbar]],
+	robot_start_btn = "1519736575|1103062262" --[[@as EButton]],
 	tissue_img = "1519736575|1508765492" --[[@as EImage]],
 }

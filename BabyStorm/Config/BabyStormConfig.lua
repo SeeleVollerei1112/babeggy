@@ -144,20 +144,15 @@ local Prefab = require("Data.Prefab")
 ---@field pickup_timeout Fixed
 ---@field pickup_move_speed_ratio Fixed
 ---@field satisfied_react_time Fixed
----@field idle_rest_min_seconds Fixed
----@field idle_rest_max_seconds Fixed
----@field wander_min_seconds Fixed
----@field wander_max_seconds Fixed
----@field wander_move_speed_ratio Fixed
----@field wander_point_interval Fixed
----@field wander_stroll_radius Fixed
----@field wander_arrive_threshold Fixed
+---@field local_wander_arrive_threshold Fixed
 ---@field toy_play_seconds Fixed
 ---@field toy_play_move_chance_percent integer
 ---@field toy_play_move_speed_ratio Fixed
 ---@field toy_play_move_interval Fixed
 ---@field toy_play_stroll_radius Fixed
 ---@field toy_play_cooldown_seconds Fixed
+---@field toy_pick_check_min_seconds Fixed
+---@field toy_pick_check_max_seconds Fixed
 ---@field toy_pick_chance_percent integer
 ---@field toy_pick_radius Fixed
 ---@field need_timeout_min_seconds integer
@@ -184,6 +179,19 @@ local Prefab = require("Data.Prefab")
 ---@class BabyDifficultyConfig
 ---@field satisfy_per_chaos_level integer
 ---@field max_chaos_level integer
+
+---@class RobotVacuumConfig
+---@field unit_name string
+---@field flat_roll_degrees Fixed
+---@field move_speed Fixed
+---@field spin_speed Fixed
+---@field joystick_deadzone Fixed
+---@field collision_radius Fixed
+---@field collision_probe_height Fixed
+---@field collision_skin Fixed
+---@field clean_radius Fixed
+---@field ready_button_text string
+---@field controlling_button_text string
 
 ---@class BabyNeedDef
 ---@field id string
@@ -258,11 +266,26 @@ local Prefab = require("Data.Prefab")
 ---@field rps BabyRpsConfig
 ---@field crib BabyCribConfig
 ---@field dirty_diaper BabyDirtyDiaperConfig
+---@field robot_vacuum RobotVacuumConfig
 ---@field needs BabyNeedDef[]
 ---@field disabled_needs BabyNeedDef[] -- 暂时下线、不参与任何逻辑的需求（见表上注释）
 
 ---@type BabyStormConfig
 local Config = {}
+
+Config.robot_vacuum = {
+    unit_name = "扫地机器人",
+    flat_roll_degrees = 90.0,
+    move_speed = 6.0,
+    spin_speed = 3.0,
+    joystick_deadzone = 0.1,
+    collision_radius = 0.8,
+    collision_probe_height = 0.3,
+    collision_skin = 0.05,
+    clean_radius = 1.0,
+    ready_button_text = "启动机器人",
+    controlling_button_text = "退出控制",
+}
 
 Config.arena = {
     area_name = "tutorial_area",
@@ -490,6 +513,7 @@ Config.dirty_diaper = {
 Config.baby = {
     prefab_id = (Prefab.character and Prefab.character["宝宝蛋"]) or 1073741937,
     count = 3,
+    -- 普通随机点巡逻参数保持漫游功能引入前的原值。
     patrol_interval = 4.0,
     patrol_threshold = 4.0,
     ai_move_threshold = 0.5,
@@ -503,20 +527,8 @@ Config.baby = {
     pickup_timeout = 5.0,
     pickup_move_speed_ratio = 2.0,
     satisfied_react_time = 3.0,
-    -- ========== 空闲：站一会儿 ⇄ 漫游一段（IdleState / WanderingState）==========
-    -- 宝宝不再是纯驻留：Idle 站够 idle_rest_* 秒就起身漫游，逛够 wander_* 秒再回 Idle。
-    -- 两个状态都照常扫描当前需求的物品、都能被举起，区别只在动不动。
-    idle_rest_min_seconds = 4.0,
-    idle_rest_max_seconds = 9.0,
-    wander_min_seconds = 6.0,
-    wander_max_seconds = 12.0,
-    wander_move_speed_ratio = 0.7, -- 漫游移速比率（Wander 缺省 0.0＝原地不动，必须显式给）
-    wander_point_interval = 3.0,   -- 漫游多久换一个目标点（秒，必须小数）；同时用作单条移动指令的持续时间
-    -- 就近散步：目标点在宝宝**当前位置**的这个半径内挑，不用场地随机点。
-    -- 用随机点的话目标动辄二三十米开外，几秒一换、宝宝光转身不赶路，看着像原地抽搐。
-    wander_stroll_radius = 8.0,
-    -- 到点判定容错：必须比 patrol_threshold(4.0) 小得多——散步一步才几米，容错 4 米等于还没迈步就算到了。
-    wander_arrive_threshold = 1.0,
+    -- 局部随机走位（抱玩具、小游戏）的到点容错；平常巡逻使用 ai_move_threshold。
+    local_wander_arrive_threshold = 1.0,
 
     -- ========== 把玩玩具（PlayingToyState）==========
     -- 宝宝捡到任何 playable 物品都会玩一会儿再放下：正好是当前需求就玩完结算满足，
@@ -527,13 +539,14 @@ Config.baby = {
     toy_play_move_speed_ratio = 1.2,
     toy_play_move_interval = 2.0,
     toy_play_stroll_radius = 10.0,
-    -- 玩完的冷却：不给的话，刚放下就可能在下一次起身漫游时被同一个宝宝捡回来。
+    -- 玩完的冷却：不给的话，刚放下就可能在下一次兴趣检查时被同一个宝宝捡回来。
     toy_play_cooldown_seconds = 15.0,
 
     -- ========== 随手捡玩具 ==========
-    -- 只在「起身漫游」那一刻掷一次骰（见 WanderingState:enter）：中了就在 toy_pick_radius 内
-    -- 找最近的玩具顺路捡走，没中就老实逛完。
-    -- 刻意不做成「周围有玩具就捡」的轮询——那样宝宝一靠近玩具必捡，而且轮询会把概率放大到几乎必然。
+    -- 平常随机点巡逻不间断；每隔一段较长随机时间做一次兴趣检查，命中概率后才会
+    -- 在 toy_pick_radius 内找最近玩具，避免每个 0.1s tick 反复掷骰放大概率。
+    toy_pick_check_min_seconds = 10.0,
+    toy_pick_check_max_seconds = 21.0,
     toy_pick_chance_percent = 30,
     toy_pick_radius = 6.0,
     need_timeout_min_seconds = 20,
