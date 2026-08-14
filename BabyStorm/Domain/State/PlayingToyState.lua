@@ -11,11 +11,12 @@ local Rand = require("Util.Rand")
 --   * satisfies = true  -> 玩完结算满足（Satisfied，计分）。
 --   * satisfies = false -> 玩完直接回 Idle，不计分、不 Upset（随手捡的就是纯玩）。
 --
--- 玩具全程留在场上：放下动作放在 exit 里做，所以被抱起 / 需求超时转 Cry 这些中途打断
+-- 玩具全程留在场上：放下动作放在 exit 里做，所以被抱起等中途打断
 -- 也不会把玩具永远攥在宝宝手里。
 ---@class PlayingToyState: StateBase
 ---@field _item BabyItemRecord|nil
 ---@field _satisfies boolean
+---@field _paused_need_seconds integer|nil
 local PlayingToyState = Class("BabyPlayingToyState", StateBase)
 
 ---@param agent BabyAgent
@@ -23,6 +24,7 @@ function PlayingToyState:Ctor(agent)
     PlayingToyState.super.Ctor(self, agent)
     self._item = nil
     self._satisfies = false
+    self._paused_need_seconds = nil
 end
 
 ---@param context BabyStateContext|nil
@@ -33,6 +35,7 @@ function PlayingToyState:enter(context)
     local item = context and context.item or nil
     self._item = item
     self._satisfies = (context and context.satisfies) and true or false
+    self._paused_need_seconds = nil
 
     if not item then
         agent:enter_idle()
@@ -42,11 +45,15 @@ function PlayingToyState:enter(context)
     agent:select_equipped_slot()
     agent:set_lift_enabled(true)
 
-    -- 满足型：需求已经拿到手了，先停掉倒计时——否则 10 秒把玩期间倒计时可能归零，
-    -- 宝宝明明拿着对的玩具却转去 Cry。
-    -- 随手玩型：倒计时照跑（玩物丧志，该超时还是得超时）。
+    -- 满足型：需求已经拿到手，倒计时不再需要。
+    -- 随手玩型：保存当前剩余时间并暂停，放下玩具时从原秒数继续。
     if self._satisfies then
         agent:cancel_need_countdown()
+    else
+        self._paused_need_seconds = agent.need_runtime:get_remaining()
+        if self._paused_need_seconds then
+            agent:cancel_need_countdown()
+        end
     end
 
     -- 一半概率拿着玩具到处跑，一半原地玩。
@@ -81,15 +88,21 @@ function PlayingToyState:enter(context)
         agent:set_status("玩一会儿~")
     end
 
-    Timer.once(self, baby.toy_play_seconds, function()
+    local play_seconds = self._satisfies and baby.toy_play_seconds or baby.toy_random_play_seconds
+    Timer.once(self, play_seconds, function()
         agent:finish_toy_play(item, self._satisfies)
     end)
 end
 
--- 离开本状态就一定把玩具还回地上：玩够了、被抱起、需求超时转 Cry 都走这里。
+-- 离开本状态就一定把玩具还回地上：玩够了、被抱起等中断都走这里。
 ---@param context BabyStateContext|nil
 function PlayingToyState:exit(context)
-    self.agent.services.item:drop_to_ground(self._item)
+    local agent = self.agent
+    agent.services.item:drop_to_ground(self._item)
+    if self._paused_need_seconds and not agent.destroyed and agent.current_need then
+        agent:_start_need_countdown(self._paused_need_seconds)
+    end
+    self._paused_need_seconds = nil
     self._item = nil
     PlayingToyState.super.exit(self, context)
 end

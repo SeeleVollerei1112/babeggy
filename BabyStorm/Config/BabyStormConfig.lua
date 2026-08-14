@@ -146,6 +146,7 @@ local Prefab = require("Data.Prefab")
 ---@field satisfied_react_time Fixed
 ---@field local_wander_arrive_threshold Fixed
 ---@field toy_play_seconds Fixed
+---@field toy_random_play_seconds Fixed
 ---@field toy_play_move_chance_percent integer
 ---@field toy_play_move_speed_ratio Fixed
 ---@field toy_play_move_interval Fixed
@@ -193,6 +194,15 @@ local Prefab = require("Data.Prefab")
 ---@field ready_button_text string
 ---@field controlling_button_text string
 
+---@class HandheldVacuumConfig
+---@field prefab_id integer
+---@field spawn_pos Fixed[]
+---@field pull_radius Fixed
+---@field destroy_radius Fixed
+---@field pull_speed Fixed
+---@field pick_up_event string
+---@field put_down_event string
+
 ---@class BabyNeedDef
 ---@field id string
 ---@field resolver "equipment"|"facility"|"ball_rally"|"rps"
@@ -239,7 +249,8 @@ local Prefab = require("Data.Prefab")
 ---@field seat_offset Fixed[]|nil
 ---@field seat_rotation Fixed[]|nil
 ---@field seat_socket integer|nil
----@field seat_anim_id integer|nil
+---@field seat_anim_key integer|nil -- 可持续循环的 AnimKey（如秋千 21013）
+---@field seat_anim_id integer|nil  -- 全身动作预设 ID（如躺姿 49）
 ---@field seat_follow_orientation boolean|nil
 ---@field seat_orient_unit_name string|nil
 ---@field swing_force_magnitude Fixed|nil
@@ -267,6 +278,7 @@ local Prefab = require("Data.Prefab")
 ---@field crib BabyCribConfig
 ---@field dirty_diaper BabyDirtyDiaperConfig
 ---@field robot_vacuum RobotVacuumConfig
+---@field handheld_vacuum HandheldVacuumConfig
 ---@field needs BabyNeedDef[]
 ---@field disabled_needs BabyNeedDef[] -- 暂时下线、不参与任何逻辑的需求（见表上注释）
 
@@ -285,6 +297,16 @@ Config.robot_vacuum = {
     clean_radius = 1.0,
     ready_button_text = "启动机器人",
     controlling_button_text = "退出控制",
+}
+
+Config.handheld_vacuum = {
+    prefab_id = (Prefab.unit and Prefab.unit["吸尘器"]) or 1073889341,
+    spawn_pos = { -151.92, 2.56, 3.81 },
+    pull_radius = 8.0,
+    destroy_radius = 1.3,
+    pull_speed = 7.0,
+    pick_up_event = "PICK_UP_TRASHCAN",
+    put_down_event = "PUT_DOWN_TRASHCAN",
 }
 
 Config.arena = {
@@ -533,7 +555,8 @@ Config.baby = {
     -- ========== 把玩玩具（PlayingToyState）==========
     -- 宝宝捡到任何 playable 物品都会玩一会儿再放下：正好是当前需求就玩完结算满足，
     -- 不是（含随手捡的）就玩完回 Idle，不计分也不 Upset。
-    toy_play_seconds = 10.0,           -- 一次把玩多久后放下（秒，必须小数）
+    toy_play_seconds = 10.0,           -- 玩具满足当前需求时，把玩多久后结算（秒，必须小数）
+    toy_random_play_seconds = 15.0,    -- 随手捡玩具时，把玩多久后放下（“玩一会儿~”分支）
     toy_play_move_chance_percent = 50, -- 把玩时「拿着到处走」的概率，其余原地玩
     -- 拿着玩具走的幅度：比漫游更欢快（抱着玩具乱跑），所以更快、换点更勤、逛得更开。
     toy_play_move_speed_ratio = 1.2,
@@ -743,7 +766,7 @@ Config.needs = {
         seat_offset = { 0, 0.5, 0 },    -- 宝宝相对座椅的座位偏移（按座椅模型微调）
         seat_rotation = { 0, 90, 0 },   -- 在座椅朝向上叠加的固定角度偏移（度）
         seat_follow_orientation = true, -- true=跟随座椅实时朝向（宝宝跟着秋千摆）；false=用固定 seat_rotation
-        seat_anim_id = 21013,           -- 坐姿动画（复用秋千坐姿 AnimKey）
+        seat_anim_key = 21013,          -- 坐姿动画 AnimKey
         -- 摆动：每隔 swing_force_interval 给座椅施一次力。顺着座椅当前运动方向推（“泵”能量），
         -- 自然越摆越高、不依赖相位；接近静止时按 swing_push_dir 起摆；速度超过 swing_max_speed 不再加力。
         swing_force_magnitude = 12.0,
@@ -774,7 +797,7 @@ Config.needs = {
         seat_rotation = { 0, 90, 0 }, -- 叠加在朝向源上的固定角度偏移（度）：修正宝宝模型正方向与投臂正方向差 90°（同秋千）
         seat_follow_orientation = true, -- 跟随朝向源实时朝向（宝宝随臂一起摆上去）
         seat_orient_unit_name = "投石车投臂0", -- 朝向以这个单位为准（位置仍粘 facility.unit / 投臂本体）
-        seat_anim_id = 21013, -- 骑乘/坐姿动画（先复用秋千坐姿，可换）
+        seat_anim_key = 21013, -- 骑乘/坐姿动画 AnimKey（先复用秋千坐姿，可换）
         -- 发射参数（CatapultLaunchService 读取）：
         launch_target = { -142.51, 2.56, 40.27 }, -- 落点世界坐标（先写死，试玩调）
         launch_delay = 0.25, -- 点击到脱臂的延迟：让宝宝随臂摆到接近顶点再飞
@@ -803,10 +826,10 @@ Config.needs = {
         interact_begin_event = "BABY_CRIB_BEGIN",
         interact_end_event = "BABY_CRIB_END",
         -- 躺床姿势：复用 _seat_agent 每帧硬粘到床面 + force_play 保持躺姿动作。
-        seat_offset = { 0, 0.4, 0 },    -- 宝宝相对床的躺位偏移（按床模型微调，绑到床“底面中心”上方）
+        seat_offset = { 0, 0.6, 0 },    -- 宝宝相对床的躺位偏移（抬高到床垫表面上方）
         seat_rotation = { 0, 0, 0 },    -- 在床朝向上叠加的固定角度偏移（度）；宝宝朝向与床一致
         seat_follow_orientation = true, -- true=朝向跟随床（与床方向一致），可叠加 seat_rotation
-        seat_anim_id = 49,              -- 躺姿动作 id（不循环由 force_play 保持）；若 49 压不住待机可换成躺姿 AnimKey
+        seat_anim_key = 21013,          -- 与秋千相同的坐姿 AnimKey；离床时停止
     },
 }
 

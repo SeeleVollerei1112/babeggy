@@ -17,6 +17,7 @@ local Log = require("Util.Log")
 ---@field key string
 ---@field item_unit Obstacle|Unit
 ---@field unit Unit|LifeEntity
+---@field role_id any
 
 ---@class CribCoordinator
 ---@field cfg BabyCribConfig
@@ -24,6 +25,7 @@ local Log = require("Util.Log")
 ---@field facility FacilityRegistry|nil
 ---@field cabinet_pos Vector3|nil
 ---@field role_held table<any, CribHeldItem>
+---@field care_items CribHeldItem[]
 ---@field started boolean
 local CribCoordinator = Class("CribCoordinator")
 
@@ -50,6 +52,7 @@ function CribCoordinator:Ctor(config, triggers)
     self.facility = nil
     self.cabinet_pos = nil
     self.role_held = {}
+    self.care_items = {}
     self.started = false
 end
 
@@ -203,9 +206,14 @@ function CribCoordinator:_on_pick_item(role, sub)
         return
     end
 
-    self.role_held[role_id] = { key = sub.key, item_unit = item_unit, unit = player }
+    local care_item = { key = sub.key, item_unit = item_unit, unit = player, role_id = role_id }
+    self.care_items[#self.care_items + 1] = care_item
+    self.role_held[role_id] = care_item
+    self.triggers:unit(item_unit, { EVENT.SPEC_OBSTACLE_LIFTED_BEGIN }, function(_, _, data)
+        self:_on_held_item_lifted(item_unit, sub.key, data)
+    end)
     self.triggers:unit(item_unit, { EVENT.SPEC_OBSTACLE_LIFTED_END }, function()
-        self:_on_held_item_released(role_id, item_unit)
+        self:_on_held_item_released(item_unit)
     end)
     -- 取到对应道具算“开始照顾”：通知所有仍有会话的床，由各自的 CribInteraction 判断
     -- 是不是在等这类道具、重置歪床倒计时，给玩家走回床边的时间。
@@ -225,15 +233,58 @@ function CribCoordinator:_on_pick_item(role, sub)
     Log.info("crib pick item lifted", sub.key, "role", role_id, tostring(item_unit))
 end
 
----@param role_id any
 ---@param item_unit Obstacle|Unit
-function CribCoordinator:_on_held_item_released(role_id, item_unit)
-    local held = role_id and self.role_held[role_id] or nil
-    if not (held and UnitUtil.same_unit(held.item_unit, item_unit)) then
+---@param key string
+---@param data table|nil
+function CribCoordinator:_on_held_item_lifted(item_unit, key, data)
+    local lift_unit = data and data.lift_unit or nil
+    local role = RoleUtil.get_role_by_unit(lift_unit)
+    local role_id = RoleUtil.get_role_id(role)
+    if not role_id then
         return
     end
-    self.role_held[role_id] = nil
-    Log.info("crib held item released", tostring(role_id), held.key)
+    local care_item = self:_care_item(item_unit)
+    if not care_item then
+        return
+    end
+    if care_item.role_id and self.role_held[care_item.role_id] == care_item then
+        self.role_held[care_item.role_id] = nil
+    end
+    local previous = self.role_held[role_id]
+    if previous and previous ~= care_item then
+        previous.role_id = nil
+    end
+    care_item.role_id = role_id
+    care_item.unit = lift_unit
+    care_item.key = key
+    self.role_held[role_id] = care_item
+    self:_reset_idle_for_sub(key)
+    Log.info("crib held item lifted again", tostring(role_id), key)
+end
+
+---@param item_unit Obstacle|Unit
+function CribCoordinator:_on_held_item_released(item_unit)
+    local care_item = self:_care_item(item_unit)
+    if care_item and care_item.role_id then
+        local role_id = care_item.role_id
+        if self.role_held[role_id] == care_item then
+            self.role_held[role_id] = nil
+        end
+        care_item.role_id = nil
+        Log.info("crib held item released", tostring(role_id), care_item.key)
+    end
+end
+
+---@param item_unit Obstacle|Unit
+---@return CribHeldItem|nil
+function CribCoordinator:_care_item(item_unit)
+    for index = 1, #self.care_items do
+        local care_item = self.care_items[index]
+        if UnitUtil.same_unit(care_item.item_unit, item_unit) then
+            return care_item
+        end
+    end
+    return nil
 end
 
 ---取到某类道具后，通知每张有会话的床——是否重置歪床倒计时由 CribInteraction 自己判断。
@@ -260,10 +311,38 @@ function CribCoordinator:consume_held(role_id)
     if not held then
         return
     end
-    self.role_held[role_id] = nil
-    if held.item_unit and GameAPI.destroy_unit then
-        pcall(function() GameAPI.destroy_unit(held.item_unit) end)
+    self:clean_unit(held.item_unit)
+end
+
+---返回仍在场上的尿布/纸巾快照；VacuumSuctionDriver 会自行跳过正被举着的单位。
+---@return (Obstacle|Unit)[]
+function CribCoordinator:get_vacuum_targets()
+    local targets = {}
+    for index = 1, #self.care_items do
+        targets[index] = self.care_items[index].item_unit
     end
+    return targets
+end
+
+---@param target Unit|nil
+---@return boolean
+function CribCoordinator:clean_unit(target)
+    if not target then
+        return false
+    end
+    for index = #self.care_items, 1, -1 do
+        local care_item = self.care_items[index]
+        if UnitUtil.same_unit(care_item.item_unit, target) then
+            if care_item.role_id and self.role_held[care_item.role_id] == care_item then
+                self.role_held[care_item.role_id] = nil
+            end
+            table.remove(self.care_items, index)
+            pcall(function() GameAPI.destroy_unit(target) end)
+            Log.info("crib care item cleaned")
+            return true
+        end
+    end
+    return false
 end
 
 -- ============================================================
@@ -524,9 +603,11 @@ end
 -- ============================================================
 
 function CribCoordinator:destroy()
-    for role_id, _ in pairs(self.role_held) do
-        self:consume_held(role_id)
+    for index = 1, #self.care_items do
+        local item_unit = self.care_items[index].item_unit
+        pcall(function() GameAPI.destroy_unit(item_unit) end)
     end
+    self.care_items = {}
     self.role_held = {}
     Timer.cancel_all(self)
     self.started = false

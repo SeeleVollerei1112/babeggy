@@ -2,6 +2,7 @@
 -- ---example
 -- --@export_plugin
 -- --@style style_type[插件样式]
+-- --@group group_name[分组名，可选]
 -- --@desc func_desc[方法描述]
 -- --@param var_name[变量名] var_type[变量类型] var_desc[变量描述]
 -- --@param.var_name param_extra_data_key[变量额外数据key] param_extra_data_value[变量额外数据value]
@@ -34,14 +35,19 @@
 -- ---@param.effect_state enum [(1, "状态1"), (2, "状态2")]
 -- 3.2 enum
 -- 配合 dropDown 使用, 设置枚举选项
+-- 4、分组（可选）
+-- 使用 ---@group 分组名 声明方法所属分组。相同分组名的方法会在调试工具面板中收纳进同一个可折叠的父分组。
+-- 未声明 ---@group 的方法保持顶层平铺显示。
+-- e.g.
+-- ---@group 角色控制
 
 
 ---@export_plugin
+---@group 角色控制
 ---@style button
 ---@desc 设置蛋仔位置
 ---@param role_id RoleID 玩家ID
 ---@param position Vector3 位置
----@return nil
 function SetPosition(role_id, position)
 	local role = GameAPI.get_role(role_id)
 	if not role then
@@ -55,11 +61,11 @@ function SetPosition(role_id, position)
 end
 
 ---@export_plugin
+---@group 角色控制
 ---@style button
 ---@desc 一键结束
 ---@param role_id RoleID 玩家ID
 ---@param result boolean 是否胜利
----@return nil
 function SetRoleGameResult(role_id, result)
 	local role = GameAPI.get_role(role_id)
 	if not role then

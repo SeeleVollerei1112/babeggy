@@ -3,6 +3,8 @@ local Intent = require("BabyStorm.Domain.BabyIntent")
 local Timer = require("BabyStorm.Core.Timer")
 local MathX = require("Util.MathX")
 
+local UNTIL_RELEASE_PLAY_TIME = 3600.0
+
 -- 设施交互子状态基类。生命周期严格嵌在 InteractingFacilityState 内：
 --   宿主状态 enter 时构造并 enter，宿主 exit 时 exit——子状态绝不跨宿主存活。
 --
@@ -91,14 +93,22 @@ function InteractionBase:_seat_follow_spec()
 end
 
 ---强制播放坐姿动画（force_play 可覆盖 AI 的站立/待机动画）。
----一次播够整段时长（duration nil = 0.0，即由 release 显式停止的既有用法）。
+---两类动作都只下发一次并由引擎循环，离开设施时由 release 停止。
 ---@param duration Fixed|nil
 function InteractionBase:_play_seat_anim(duration)
-    if self.def.seat_anim_id then
+    -- 等待型设施没有 duration；给一次足够长的循环时长，仍由 exit/release 主动停止。
+    local play_time = duration or UNTIL_RELEASE_PLAY_TIME
+    if self.def.seat_anim_key then
         self.agent.animation:force_play({
             mode = "anim_key",
+            id = self.def.seat_anim_key,
+            duration = play_time,
+        }, "facility")
+    elseif self.def.seat_anim_id then
+        self.agent.animation:force_play({
+            mode = "body_id",
             id = self.def.seat_anim_id,
-            duration = duration or 0.0,
+            duration = play_time,
         }, "facility")
     end
 end

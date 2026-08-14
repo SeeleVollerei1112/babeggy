@@ -281,6 +281,24 @@ end
 -- 回收
 -- ============================================================
 
+---返回仍在场上的脏尿布本体快照；地面贴花不参与手持吸尘器吸附。
+---@return (Obstacle|Unit)[]
+function DirtyDiaperProp:get_diapers()
+    local diapers = {}
+    for index = 1, #self._piles do
+        local diaper = self._piles[index].diaper
+        if diaper then
+            diapers[#diapers + 1] = diaper
+        end
+    end
+    return diapers
+end
+
+---@return (Obstacle|Unit)[]
+function DirtyDiaperProp:get_vacuum_targets()
+    return self:get_diapers()
+end
+
 ---@param target Unit|nil
 ---@return boolean
 function DirtyDiaperProp:is_cleanable(target)

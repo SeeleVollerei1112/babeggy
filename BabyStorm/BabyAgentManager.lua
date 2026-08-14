@@ -325,6 +325,18 @@ function BabyAgentManager:get_dirty_diaper_service()
     return self.services and self.services.dirty_diaper or nil
 end
 
+---@return table[]
+function BabyAgentManager:get_vacuum_cleaners()
+    local cleaners = {}
+    if self.services and self.services.dirty_diaper then
+        cleaners[#cleaners + 1] = self.services.dirty_diaper
+    end
+    if self.services and self.services.crib then
+        cleaners[#cleaners + 1] = self.services.crib
+    end
+    return cleaners
+end
+
 ---@return BabyStormDebugSnapshot
 function BabyAgentManager:get_debug_snapshot()
     local snapshot = {

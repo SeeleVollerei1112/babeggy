@@ -5,6 +5,10 @@ return {
 		desc = "",
 		prefabID = 1073786935,
 	},
+	["吸尘器_自定义"] = {
+		desc = "",
+		prefabID = 1073893418,
+	},
 	["气泡水_自定义"] = {
 		desc = "",
 		prefabID = 1073750021,

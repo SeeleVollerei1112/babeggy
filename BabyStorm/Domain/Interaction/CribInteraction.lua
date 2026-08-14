@@ -6,7 +6,7 @@ local Timer = require("BabyStorm.Core.Timer")
 local Rand = require("Util.Rand")
 local Log = require("Util.Log")
 
--- 婴儿床：宝宝躺床——躺姿动作（seat_anim_id=49）+ 每帧硬粘到床躺位 + 锁移动 + 关碰撞，
+-- 婴儿床：宝宝上床——坐姿 AnimKey 21013 + 每帧硬粘到床位 + 锁移动 + 关碰撞，
 -- 换尿布/擦屁股玩法（子需求随机、取物持有、长按进度、歪床/扶正）全部在本子状态内完成：
 --   * 会话数据写 facility.crib_session（View/Coordinator 只读的黑板，字段见 CribCareSession）。
 --   * 长按进度由 CribCoordinator 校验后经 handle_event(crib_press_begin/end) 驱动，
@@ -195,6 +195,9 @@ function CribInteraction:_on_idle_tilt()
     self.agent.services.crib:tilt_bed(self.facility)
     self.agent:fail_facility_interaction(self.facility)
 end
+
+-- 吸尘器用来清理宝宝的脏尿布, 但宝宝在换洗时会把脏尿布扔到地上，吸尘器可以清理它,
+-- 举起吸尘器时算作启动吸尘器,触发事件PICK_UP_TRASHCAN播放吸气特效,PUT_DOWN_TRASHCAN放下吸尘器触发,会触发关闭吸气特效.玩家举起吸尘器会吸附周围的脏尿布,到指定距离后脏尿布这个单位被销毁
 
 function CribInteraction:exit()
     self.facility.crib_session = nil

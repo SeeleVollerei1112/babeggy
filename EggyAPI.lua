@@ -307,6 +307,8 @@ function math.Quaternion(pitch, yaw, roll) end
 
 ---@alias Archive integer 自定义存档
 
+---@alias ArchiveUploadState integer 存档上传状态
+
 ---@alias BagSlotStyleKey integer 物品格样式编号
 
 ---@alias BattleShopKey integer 商店
@@ -962,6 +964,7 @@ Enums.ValueType = {
 	AnimationStyleKey = 'AnimationStyleKey',  ---动效样式编号
 	Archive = 'Archive',  ---自定义存档
 	ArchiveType = 'ArchiveType',  ---存档类型
+	ArchiveUploadState = 'ArchiveUploadState',  ---存档上传状态
 	BagSlotStyleKey = 'BagSlotStyleKey',  ---物品格样式编号
 	BattleShopKey = 'BattleShopKey',  ---商店
 	BindType = 'BindType',  ---绑定类型
@@ -1051,6 +1054,7 @@ Enums.ValueType = {
 	ListAnimationStyleKey = 'ListAnimationStyleKey',  ---动效样式编号列表
 	ListArchive = 'ListArchive',  ---自定义存档列表
 	ListArchiveType = 'ListArchiveType',  ---存档类型列表
+	ListArchiveUploadState = 'ListArchiveUploadState',  ---存档上传状态列表
 	ListBagSlotStyleKey = 'ListBagSlotStyleKey',  ---物品格样式编号列表
 	ListBattleShopKey = 'ListBattleShopKey',  ---商店列表
 	ListBindType = 'ListBindType',  ---绑定类型列表
@@ -3229,6 +3233,11 @@ function GameAPI.create_eui_progress_at_position(_progress_bar_style_key, _paren
 ---@return ENode 环形进度条节点
 function GameAPI.create_eui_progresstimer_at_position(_progress_timer_style_key, _parent, _x, _y, _width, _height, _name) end
 
+---创建硬连接关节
+---@param _unit1 Unit 连接主体
+---@param _unit2 Unit 连接目标
+function GameAPI.create_fixed_joint(_unit1, _unit2) end
+
 ---创建关节助手
 ---@param _unit_key Enums.JointAssistantKey 关节助手类型
 ---@param _unit1 Unit 连接主体
@@ -4343,6 +4352,17 @@ function GameAPI.register_geometry_frustum(_height, _inner_radius, _outer_radius
 ---@return string 几何体路径，用于create_obstacle_from_geometry
 function GameAPI.register_geometry_ring(_height, _inner_radius, _outer_radius, _inner_poly_count, _outer_poly_count, _chamfer_radius, _angle, _preconf) end
 
+---注册一个几何体：圆环2（可变形，新版本）
+---@param _radius Fixed 半径
+---@param _cross_radius Fixed 截面半径
+---@param _segment integer 圆周分段数（3~25）
+---@param _cross_segment integer 截面分段数（3~25）
+---@param _angle Fixed 角度
+---@param _easy_physics boolean 精简物理（高性能）
+---@param _preconf table 扩展配置（预留 ）
+---@return string 几何体路径，用于create_obstacle_from_geometry
+function GameAPI.register_geometry_ring2(_radius, _cross_radius, _segment, _cross_segment, _angle, _easy_physics, _preconf) end
+
 ---注册一个几何体：自定义曲线/曲面
 ---@param _is_rope boolean 是否为曲线
 ---@param _pos_list Vector3[] 点列表
@@ -4359,6 +4379,10 @@ function GameAPI.register_geometry_spline(_is_rope, _pos_list, _normal_list, _ra
 ---@param _path_id PathID 路径
 ---@param _index integer 路点索引
 function GameAPI.remove_pathpoint(_path_id, _index) end
+
+---上传所有玩家存档
+---@return ArchiveUploadState 上传结果
+function GameAPI.request_archive() end
 
 ---设置所有场景界面显示状态
 ---@param _role Role 玩家
@@ -6256,6 +6280,9 @@ function Role.play_ui_animation_effect(_effect_node) end
 ---播放界面动效
 ---@param _effect_node EEffectNode UI动效
 function Role.play_ui_effect(_effect_node) end
+
+---触发玩家的存档
+function Role.request_archive() end
 
 ---重置界面动画
 ---@param _node ENode UI节点

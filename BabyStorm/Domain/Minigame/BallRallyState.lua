@@ -366,7 +366,7 @@ function BallRallyState:_begin_celebrate()
     -- 球可能已被打飞出界销毁，保留 pcall。
     pcall(function() baby.lift_unit(self._ball) end)
 
-    agent:set_status("顶满啦！举高高～")
+    agent:set_status("开心～")
     self:_show_tip("完成！宝宝举起球啦～", 1.5)
     self.phase = "celebrate"
     Timer.once(self, self.cfg.celebrate_hold_seconds, function()

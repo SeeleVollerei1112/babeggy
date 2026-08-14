@@ -194,7 +194,7 @@ function MovementSystem:_begin_pickup(unit)
     self:_set_speed(unit, agent.config.baby.pickup_move_speed_ratio)
     -- 装备单位可能已被拾取/回收销毁，仅此调用保留 pcall。
     pcall(function()
-        unit.ai_command_pick_up_equipment(item.equipment, Enums.MoveMode.DIRECT, 0.2)
+        unit.ai_command_pick_up_equipment(item.equipment, Enums.MoveMode.DIRECT_AUTO_JUMP, 0.2)
     end)
     -- 速度比率周期性重申，避免锁解除后被 ActionLock 恢复成 1.0。
     self._speed_timer = Timer.every(self, PICKUP_SPEED_REASSERT_INTERVAL, function()
